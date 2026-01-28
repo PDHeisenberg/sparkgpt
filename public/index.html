@@ -47,18 +47,22 @@
       height: 100%;
     }
 
-    /* Status text - big and clear */
+    /* Status text - subtle */
     #status {
-      margin-top: 32px;
-      font-size: 24px;
-      font-weight: 500;
+      margin-top: 24px;
+      font-size: 14px;
+      font-weight: 400;
       text-align: center;
-      min-height: 36px;
+      min-height: 20px;
+      color: var(--text-dim);
+      opacity: 0.6;
+      transition: all 0.3s;
     }
 
-    #status.listening { color: var(--success); }
-    #status.thinking { color: var(--warning); }
-    #status.speaking { color: var(--cyan); }
+    #status:empty { opacity: 0; }
+    #status.listening { color: var(--success); opacity: 0.8; }
+    #status.thinking { color: var(--warning); opacity: 1; }
+    #status.speaking { color: var(--cyan); opacity: 0; }
 
     /* Transcript - simple */
     #transcript {
@@ -201,6 +205,6 @@
   }
   </script>
 
-  <script type="module" src="app.js?v=2"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>
