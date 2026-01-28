@@ -28,14 +28,17 @@ const llm = new LLMProvider(config.llm);
 // Express app for static files
 const app = express();
 
-// CORS for Netlify frontend
+// No caching for development, CORS headers
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.header('Pragma', 'no-cache');
+  res.header('Expires', '0');
   next();
 });
 
-app.use(express.static(join(__dirname, '../public')));
+app.use(express.static(join(__dirname, '../public'), { etag: false, lastModified: false }));
 
 // API endpoint for config (non-sensitive)
 app.get('/api/config', (req, res) => {

@@ -1,27 +1,26 @@
 /**
- * LLM Provider - Routes to Clawdbot Gateway
- * 
- * Instead of calling Claude directly, we send messages to the Clawdbot
- * gateway so Spark Voice shares context with the main assistant.
+ * LLM Provider - Fast voice responses via Clawdbot Gateway
  */
 
 import { readFileSync, existsSync } from 'fs';
 
+const SYSTEM_PROMPT = `You are Spark, a voice assistant. Be concise and natural.
+- Keep responses under 50 words
+- No markdown, bullet points, or formatting
+- Speak naturally like in conversation
+- Be direct, skip filler phrases`;
+
 export class LLMProvider {
   constructor(config) {
-    this.config = config;
-    
-    // Clawdbot gateway connection
     this.gatewayUrl = config.gatewayUrl || 'http://localhost:18789';
     this.gatewayToken = config.gatewayToken || this.loadGatewayToken();
+    // Use fast model - Haiku is quick
+    this.model = 'claude-3-5-haiku-20241022';
     
-    if (!this.gatewayToken) {
-      console.warn('⚠️  No gateway token found - will try without auth');
-    }
+    console.log(`🧠 LLM: ${this.model} via ${this.gatewayUrl}`);
   }
 
   loadGatewayToken() {
-    // Load from clawdbot config
     const configPath = '/home/heisenberg/.clawdbot/clawdbot.json';
     if (existsSync(configPath)) {
       try {
@@ -32,96 +31,45 @@ export class LLMProvider {
     return null;
   }
 
-  /**
-   * Send message to Clawdbot and get response
-   * @param {Array} history - Conversation history (we only send the last user message)
-   * @returns {Promise<string>} - Assistant response
-   */
   async chat(history) {
     const startTime = Date.now();
     
-    // Get the last user message
-    const lastUserMsg = history.filter(m => m.role === 'user').pop();
-    if (!lastUserMsg) {
-      return "I didn't catch that. Could you repeat?";
-    }
+    // Build messages
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...history.slice(-6) // Last 6 messages for context
+    ];
 
-    const text = lastUserMsg.content;
-    
     try {
-      // Use sessions_send style API to send to main session
-      const response = await fetch(`${this.gatewayUrl}/api/sessions/send`, {
+      const response = await fetch(`${this.gatewayUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(this.gatewayToken && { 'Authorization': `Bearer ${this.gatewayToken}` }),
+          'Authorization': `Bearer ${this.gatewayToken}`,
         },
         body: JSON.stringify({
-          sessionKey: 'agent:main:voice',  // Dedicated voice session
-          message: `[Voice] ${text}`,
-          timeoutSeconds: 60,
+          model: this.model,
+          messages,
+          max_tokens: 150,
+          temperature: 0.7,
         }),
       });
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`Gateway error ${response.status}: ${error}`);
+        console.error(`Gateway error ${response.status}:`, error);
+        throw new Error(`API error: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log(`🧠 Clawdbot response: ${Date.now() - startTime}ms`);
+      const reply = data.choices?.[0]?.message?.content || '';
       
-      // Extract text from response
-      if (data.reply) {
-        return data.reply;
-      } else if (data.content) {
-        // Handle different response formats
-        if (Array.isArray(data.content)) {
-          return data.content.map(c => c.text || '').join('');
-        }
-        return data.content;
-      }
-      
-      return data.message || data.text || "I processed that but don't have a response.";
+      console.log(`🧠 Response in ${Date.now() - startTime}ms: "${reply.slice(0, 50)}..."`);
+      return reply;
       
     } catch (error) {
-      console.error('Gateway error:', error.message);
-      
-      // Fallback: try direct message endpoint
-      try {
-        return await this.fallbackChat(text);
-      } catch (fallbackError) {
-        console.error('Fallback also failed:', fallbackError.message);
-        return "Sorry, I'm having trouble connecting. Try again in a moment.";
-      }
+      console.error('LLM error:', error.message);
+      return "Sorry, I couldn't process that. Try again?";
     }
-  }
-
-  /**
-   * Fallback: Use the chat completions endpoint
-   */
-  async fallbackChat(text) {
-    const response = await fetch(`${this.gatewayUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.gatewayToken && { 'Authorization': `Bearer ${this.gatewayToken}` }),
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        messages: [
-          { role: 'system', content: 'You are Spark, responding via voice. Keep responses concise (under 100 words).' },
-          { role: 'user', content: text }
-        ],
-        max_tokens: 300,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Fallback error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || "No response";
   }
 }

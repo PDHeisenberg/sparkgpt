@@ -3,388 +3,204 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Spark ⚡</title>
+  <title>Spark</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
   <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
     :root {
-      --bg-primary: #0a0a0f;
-      --bg-secondary: #12121a;
-      --bg-tertiary: #1a1a25;
-      --accent: #ffd700;
-      --accent-glow: rgba(255, 215, 0, 0.3);
-      --text-primary: #ffffff;
-      --text-secondary: #888;
-      --success: #4CAF50;
-      --warning: #FFC107;
-      --error: #f44336;
-      --info: #2196F3;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+      --bg: #0a0a0f;
+      --surface: #16161f;
+      --cyan: #00d4ff;
+      --cyan-glow: rgba(0, 212, 255, 0.3);
+      --text: #ffffff;
+      --text-dim: #666;
+      --success: #00cc88;
+      --warning: #ffaa00;
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+      background: var(--bg);
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      color: var(--text-primary);
-      overflow: hidden;
-    }
-
-    /* Loading screen */
-    #loading {
-      position: fixed;
-      inset: 0;
-      background: var(--bg-primary);
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
-      transition: opacity 0.5s ease;
-    }
-
-    #loading.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .loader-icon {
-      font-size: 64px;
-      animation: pulse-glow 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse-glow {
-      0%, 100% { filter: drop-shadow(0 0 10px var(--accent)); transform: scale(1); }
-      50% { filter: drop-shadow(0 0 30px var(--accent)); transform: scale(1.1); }
-    }
-
-    .loader-text {
-      margin-top: 20px;
-      color: var(--text-secondary);
-      font-size: 14px;
-    }
-
-    /* Main container */
-    #app {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      max-width: 800px;
-      width: 100%;
-      margin: 0 auto;
+      color: var(--text);
+      overflow: hidden;
       padding: 20px;
+      padding-bottom: env(safe-area-inset-bottom, 20px);
     }
 
-    /* Avatar section */
-    #avatar-section {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 300px;
+    /* Robot container */
+    #robot-wrap {
       position: relative;
-    }
-
-    #avatar-container {
       width: 100%;
-      max-width: 500px;
-      aspect-ratio: 4/3;
-      background: radial-gradient(ellipse at center, var(--bg-tertiary) 0%, var(--bg-primary) 100%);
-      border-radius: 20px;
-      overflow: hidden;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-      position: relative;
+      max-width: 300px;
+      aspect-ratio: 1;
     }
 
-    #avatar-canvas {
+    #robot-canvas {
       width: 100%;
       height: 100%;
-      display: block;
     }
 
-    /* Waveform overlay (shows when speaking) */
-    #waveform {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 3px;
-      align-items: center;
-      height: 40px;
-      opacity: 0;
-      transition: opacity 0.3s;
+    /* Status text - big and clear */
+    #status {
+      margin-top: 32px;
+      font-size: 24px;
+      font-weight: 500;
+      text-align: center;
+      min-height: 36px;
     }
 
-    #waveform.active {
-      opacity: 1;
+    #status.listening { color: var(--success); }
+    #status.thinking { color: var(--warning); }
+    #status.speaking { color: var(--cyan); }
+
+    /* Transcript - simple */
+    #transcript {
+      margin-top: 24px;
+      font-size: 18px;
+      line-height: 1.6;
+      text-align: center;
+      max-width: 500px;
+      color: var(--text-dim);
+      min-height: 60px;
     }
 
-    .wave-bar {
-      width: 4px;
-      background: var(--accent);
-      border-radius: 2px;
-      animation: wave 0.5s ease-in-out infinite;
-    }
+    #transcript.user { color: var(--text); }
+    #transcript.assistant { color: var(--cyan); }
 
-    @keyframes wave {
-      0%, 100% { height: 8px; }
-      50% { height: 32px; }
-    }
-
-    /* Status bar */
-    #status-bar {
-      margin-top: 20px;
-      padding: 12px 24px;
-      background: var(--bg-tertiary);
-      border-radius: 50px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 14px;
-    }
-
-    #status-indicator {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--text-secondary);
-      transition: all 0.3s;
-    }
-
-    #status-indicator.listening {
-      background: var(--success);
-      box-shadow: 0 0 15px var(--success);
-    }
-
-    #status-indicator.thinking {
-      background: var(--warning);
-      box-shadow: 0 0 15px var(--warning);
-      animation: pulse 0.6s ease-in-out infinite;
-    }
-
-    #status-indicator.speaking {
-      background: var(--info);
-      box-shadow: 0 0 15px var(--info);
-    }
-
-    #status-indicator.error {
-      background: var(--error);
-      box-shadow: 0 0 15px var(--error);
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    #status-text {
-      color: var(--text-secondary);
-      flex: 1;
-    }
-
-    #latency {
-      font-size: 12px;
-      color: var(--text-secondary);
-      opacity: 0.7;
-    }
-
-    /* Transcript */
-    #transcript-container {
-      margin-top: 20px;
-      max-height: 200px;
-      overflow-y: auto;
-      background: var(--bg-secondary);
-      border-radius: 16px;
-      padding: 16px;
-    }
-
-    .message {
-      padding: 10px 14px;
-      margin: 6px 0;
-      border-radius: 12px;
-      font-size: 14px;
-      line-height: 1.5;
-      animation: fadeIn 0.3s ease;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .message.user {
-      background: var(--bg-tertiary);
-      margin-left: 40px;
-      text-align: right;
-    }
-
-    .message.assistant {
-      background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
-      border-left: 3px solid var(--accent);
-      margin-right: 40px;
-    }
-
-    .message.interim {
-      opacity: 0.5;
-      font-style: italic;
-    }
-
-    /* Controls */
+    /* Minimal controls */
     #controls {
-      margin-top: 20px;
+      position: fixed;
+      bottom: 40px;
+      bottom: calc(40px + env(safe-area-inset-bottom, 0px));
       display: flex;
-      justify-content: center;
-      gap: 12px;
-      padding-bottom: 20px;
+      gap: 16px;
     }
 
-    button {
-      padding: 14px 28px;
+    .icon-btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
       border: none;
-      border-radius: 50px;
+      background: var(--surface);
       cursor: pointer;
-      font-size: 15px;
-      font-weight: 600;
-      transition: all 0.3s ease;
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
+      transition: all 0.2s;
     }
 
-    #start-btn {
-      background: linear-gradient(135deg, var(--accent), #ff8c00);
-      color: #000;
-      box-shadow: 0 4px 20px var(--accent-glow);
+    .icon-btn:hover {
+      background: #222;
+      transform: scale(1.05);
     }
 
-    #start-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 30px var(--accent-glow);
+    .icon-btn:active {
+      transform: scale(0.95);
     }
 
-    #start-btn:active {
-      transform: translateY(0);
+    .icon-btn.active {
+      background: #ff4444;
     }
 
-    .secondary-btn {
-      background: var(--bg-tertiary);
-      color: var(--text-primary);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+    .icon-btn svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--text);
+      stroke-width: 2;
+      fill: none;
     }
 
-    .secondary-btn:hover {
-      background: var(--bg-secondary);
-      border-color: rgba(255, 255, 255, 0.2);
+    .icon-btn.active svg {
+      stroke: white;
     }
 
-    .secondary-btn.active {
-      background: var(--error);
-      border-color: var(--error);
-    }
-
-    .hidden { display: none !important; }
-
-    /* Settings panel */
-    #settings {
+    /* Connection indicator */
+    #connection {
       position: fixed;
       top: 20px;
       right: 20px;
-      z-index: 100;
-    }
-
-    #settings-btn {
-      width: 44px;
-      height: 44px;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
+      background: var(--text-dim);
+      transition: all 0.3s;
     }
 
-    /* Mobile optimizations */
-    @media (max-width: 600px) {
-      #app { padding: 10px; }
-      #avatar-container { border-radius: 12px; }
-      #status-bar { padding: 10px 16px; }
-      .message { font-size: 13px; }
-      button { padding: 12px 20px; font-size: 14px; }
+    #connection.connected {
+      background: var(--success);
+      box-shadow: 0 0 12px var(--success);
     }
 
-    /* Debug panel (hidden by default) */
-    #debug {
+    #connection.error {
+      background: #ff4444;
+      box-shadow: 0 0 12px #ff4444;
+    }
+
+    /* Loading state */
+    .loading #robot-wrap {
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    /* Error toast */
+    #error {
       position: fixed;
-      bottom: 10px;
-      left: 10px;
-      font-size: 10px;
-      color: var(--text-secondary);
-      opacity: 0.5;
+      bottom: 120px;
+      background: #ff4444;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
     }
+
+    #error.show { opacity: 1; }
   </style>
 </head>
-<body>
-  <!-- Loading -->
-  <div id="loading">
-    <div class="loader-icon">⚡</div>
-    <div class="loader-text">Initializing Spark...</div>
+<body class="loading">
+  <div id="connection"></div>
+  
+  <div id="robot-wrap">
+    <canvas id="robot-canvas"></canvas>
   </div>
 
-  <!-- Settings -->
-  <div id="settings">
-    <button id="settings-btn" class="secondary-btn" title="Settings">⚙️</button>
+  <div id="status">Connecting...</div>
+  <div id="transcript"></div>
+
+  <div id="controls">
+    <button id="mute-btn" class="icon-btn" title="Mute">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+        <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
   </div>
 
-  <!-- Main app -->
-  <div id="app">
-    <!-- Avatar -->
-    <div id="avatar-section">
-      <div id="avatar-container">
-        <canvas id="avatar-canvas"></canvas>
-        <div id="waveform">
-          <!-- Generated by JS -->
-        </div>
-      </div>
-      
-      <div id="status-bar">
-        <div id="status-indicator"></div>
-        <span id="status-text">Click Start to begin</span>
-        <span id="latency"></span>
-      </div>
-    </div>
+  <div id="error"></div>
 
-    <!-- Transcript -->
-    <div id="transcript-container">
-      <div id="transcript"></div>
-    </div>
-
-    <!-- Controls -->
-    <div id="controls">
-      <button id="start-btn">⚡ Start</button>
-      <button id="mute-btn" class="secondary-btn hidden">🎤 Mute</button>
-      <button id="clear-btn" class="secondary-btn hidden">🗑️</button>
-    </div>
-  </div>
-
-  <div id="debug"></div>
-
-  <!-- Three.js -->
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
     }
   }
   </script>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=2"></script>
 </body>
 </html>

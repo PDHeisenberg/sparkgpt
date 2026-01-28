@@ -1,862 +1,570 @@
 /**
- * Spark Voice Client
- * 
- * Architecture:
- * - STTProvider: Abstracts speech-to-text (browser / deepgram)
- * - AudioPlayer: Handles TTS playback with lip-sync data
- * - AvatarRenderer: Three.js 3D avatar with expressions
- * - WebSocketClient: Connection management with auto-reconnect
- * - App: Main orchestrator
+ * Spark Voice - Minimal Edition
  */
 
 import * as THREE from 'three';
 
 // ============================================================================
-// CONFIGURATION
+// CONFIG
 // ============================================================================
 
 const CONFIG = {
-  // Backend on Tailscale - only accessible to your devices
-  wsUrl: 'wss://clawdbot.tail6f2982.ts.net',
+  // Use current host (works for both Tailscale and local dev)
+  wsUrl: `wss://${location.host}`,
   reconnectDelay: 2000,
-  maxReconnectAttempts: 5,
-  silenceThreshold: 1500, // ms of silence before sending
-  debug: window.location.search.includes('debug'),
+  silenceThreshold: 1200,
 };
 
 // ============================================================================
-// STT PROVIDER (Browser Web Speech API)
+// ELEMENTS
 // ============================================================================
 
-class STTProvider {
-  constructor() {
-    this.recognition = null;
-    this.isListening = false;
-    this.onTranscript = null;
-    this.onInterim = null;
-    this.onError = null;
-    
-    this.finalTranscript = '';
-    this.silenceTimer = null;
-  }
-
-  init() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-      throw new Error('Speech recognition not supported. Try Chrome or Edge.');
-    }
-
-    this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
-    this.recognition.lang = 'en-US';
-    this.recognition.maxAlternatives = 1;
-
-    this.recognition.onresult = (event) => this.handleResult(event);
-    this.recognition.onerror = (event) => this.handleError(event);
-    this.recognition.onend = () => this.handleEnd();
-    
-    return true;
-  }
-
-  handleResult(event) {
-    let interimTranscript = '';
-
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const result = event.results[i];
-      const transcript = result[0].transcript;
-      
-      if (result.isFinal) {
-        this.finalTranscript += transcript + ' ';
-      } else {
-        interimTranscript += transcript;
-      }
-    }
-
-    // Show interim results
-    if (interimTranscript && this.onInterim) {
-      this.onInterim(interimTranscript);
-    }
-
-    // Reset silence timer
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
-    
-    // Send after silence
-    this.silenceTimer = setTimeout(() => {
-      if (this.finalTranscript.trim()) {
-        if (this.onTranscript) {
-          this.onTranscript(this.finalTranscript.trim());
-        }
-        this.finalTranscript = '';
-      }
-    }, CONFIG.silenceThreshold);
-  }
-
-  handleError(event) {
-    if (event.error === 'no-speech') {
-      // Normal, just restart
-      return;
-    }
-    
-    if (event.error === 'not-allowed') {
-      if (this.onError) this.onError('Microphone access denied');
-      return;
-    }
-    
-    console.error('STT error:', event.error);
-    if (this.onError) this.onError(event.error);
-  }
-
-  handleEnd() {
-    // Auto-restart if we should be listening
-    if (this.isListening) {
-      try {
-        this.recognition.start();
-      } catch (e) {
-        // Already started, ignore
-      }
-    }
-  }
-
-  start() {
-    if (!this.recognition) this.init();
-    this.isListening = true;
-    try {
-      this.recognition.start();
-    } catch (e) {
-      // Already started
-    }
-  }
-
-  stop() {
-    this.isListening = false;
-    if (this.silenceTimer) {
-      clearTimeout(this.silenceTimer);
-    }
-    if (this.recognition) {
-      this.recognition.stop();
-    }
-  }
-
-  pause() {
-    this.isListening = false;
-    if (this.recognition) {
-      this.recognition.stop();
-    }
-  }
-
-  resume() {
-    this.isListening = true;
-    try {
-      this.recognition.start();
-    } catch (e) {}
-  }
-}
+const $ = (id) => document.getElementById(id);
+const body = document.body;
+const canvas = $('robot-canvas');
+const statusEl = $('status');
+const transcriptEl = $('transcript');
+const connectionEl = $('connection');
+const muteBtn = $('mute-btn');
+const errorEl = $('error');
 
 // ============================================================================
-// AUDIO PLAYER
+// STATE
 // ============================================================================
 
-class AudioPlayer {
-  constructor() {
-    this.audioContext = null;
-    this.audioQueue = [];
-    this.isPlaying = false;
-    this.currentSource = null;
-    this.analyser = null;
-    this.onStart = null;
-    this.onEnd = null;
-    this.onAmplitude = null;
-  }
-
-  init() {
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    this.analyser = this.audioContext.createAnalyser();
-    this.analyser.fftSize = 256;
-    this.analyser.connect(this.audioContext.destination);
-  }
-
-  async playChunks(chunks) {
-    if (!this.audioContext) this.init();
-    
-    // Resume context if suspended (autoplay policy)
-    if (this.audioContext.state === 'suspended') {
-      await this.audioContext.resume();
-    }
-
-    // Combine all chunks
-    const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
-    const combined = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    // Decode and play
-    try {
-      const audioBuffer = await this.audioContext.decodeAudioData(combined.buffer);
-      await this.playBuffer(audioBuffer);
-    } catch (e) {
-      console.error('Audio decode error:', e);
-    }
-  }
-
-  async playBuffer(audioBuffer) {
-    return new Promise((resolve) => {
-      this.isPlaying = true;
-      if (this.onStart) this.onStart();
-
-      this.currentSource = this.audioContext.createBufferSource();
-      this.currentSource.buffer = audioBuffer;
-      this.currentSource.connect(this.analyser);
-
-      // Amplitude monitoring for lip-sync
-      const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-      const monitorAmplitude = () => {
-        if (!this.isPlaying) return;
-        this.analyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        if (this.onAmplitude) this.onAmplitude(avg / 255);
-        requestAnimationFrame(monitorAmplitude);
-      };
-      monitorAmplitude();
-
-      this.currentSource.onended = () => {
-        this.isPlaying = false;
-        this.currentSource = null;
-        if (this.onEnd) this.onEnd();
-        resolve();
-      };
-
-      this.currentSource.start(0);
-    });
-  }
-
-  stop() {
-    if (this.currentSource) {
-      this.currentSource.stop();
-      this.currentSource = null;
-    }
-    this.isPlaying = false;
-    this.audioQueue = [];
-  }
-
-  getAmplitude() {
-    if (!this.analyser || !this.isPlaying) return 0;
-    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-    this.analyser.getByteFrequencyData(dataArray);
-    return dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
-  }
-}
+let ws = null;
+let recognition = null;
+let isListening = false;
+let isMuted = false;
+let audioContext = null;
+let robot = null;
 
 // ============================================================================
-// AVATAR RENDERER (Three.js)
+// CUTE ROBOT AVATAR
 // ============================================================================
 
-class AvatarRenderer {
+class CuteRobot {
   constructor(canvas) {
     this.canvas = canvas;
-    this.scene = null;
-    this.camera = null;
-    this.renderer = null;
-    this.avatar = null;
+    this.scene = new THREE.Scene();
     this.clock = new THREE.Clock();
-    this.mouthAmplitude = 0;
-    this.targetMouthAmplitude = 0;
-    this.state = 'idle'; // idle | listening | thinking | speaking
+    
+    // State
+    this.mouthOpen = 0;
+    this.targetMouth = 0;
+    this.eyeState = 'normal'; // normal, happy, thinking
+    this.blinkTimer = 0;
+    this.isBlinking = false;
+    this.floatPhase = 0;
+    
+    this.init();
   }
 
   init() {
-    // Scene
-    this.scene = new THREE.Scene();
-    
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+
     // Camera
-    const aspect = this.canvas.clientWidth / this.canvas.clientHeight;
-    this.camera = new THREE.PerspectiveCamera(30, aspect, 0.1, 100);
-    this.camera.position.set(0, 1.4, 2.5);
-    this.camera.lookAt(0, 1.3, 0);
+    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
+    this.camera.position.set(0, 0.5, 4);
+    this.camera.lookAt(0, 0.3, 0);
 
     // Renderer
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas,
-      antialias: true,
-      alpha: true,
-    });
-    this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight);
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
+    this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     // Lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-    this.scene.add(ambient);
-
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
     const key = new THREE.DirectionalLight(0xffffff, 0.8);
-    key.position.set(2, 3, 2);
+    key.position.set(3, 5, 3);
     this.scene.add(key);
-
     const fill = new THREE.DirectionalLight(0x88ccff, 0.3);
-    fill.position.set(-2, 1, 2);
+    fill.position.set(-2, 2, 2);
     this.scene.add(fill);
 
-    const rim = new THREE.DirectionalLight(0xffd700, 0.4);
-    rim.position.set(0, 2, -2);
-    this.scene.add(rim);
-
-    // Create avatar
-    this.createAvatar();
+    // Build robot
+    this.buildRobot();
 
     // Handle resize
-    window.addEventListener('resize', () => this.onResize());
+    window.addEventListener('resize', () => this.resize());
 
-    // Start animation loop
+    // Start animation
     this.animate();
   }
 
-  createAvatar() {
-    this.avatar = new THREE.Group();
+  buildRobot() {
+    this.group = new THREE.Group();
 
     // Materials
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1a2e,
-      metalness: 0.7,
+    const bodyMat = new THREE.MeshStandardMaterial({ 
+      color: 0xe8e8f0,
       roughness: 0.3,
+      metalness: 0.1
     });
-
-    const accentMat = new THREE.MeshStandardMaterial({
-      color: 0xffd700,
-      metalness: 0.8,
-      roughness: 0.2,
-      emissive: 0xffd700,
-      emissiveIntensity: 0.3,
-    });
-
-    const screenMat = new THREE.MeshStandardMaterial({
-      color: 0x0a0a15,
-      metalness: 0.5,
+    const darkMat = new THREE.MeshStandardMaterial({ 
+      color: 0x2a2a35,
       roughness: 0.5,
+      metalness: 0.2
+    });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff });
+    const accentMat = new THREE.MeshStandardMaterial({ 
+      color: 0x00d4ff,
+      emissive: 0x00d4ff,
+      emissiveIntensity: 0.3
     });
 
-    const eyeMat = new THREE.MeshStandardMaterial({
-      color: 0x00ffff,
-      emissive: 0x00ffff,
-      emissiveIntensity: 0.6,
-    });
-
-    // Head (rounded box-ish)
-    const headGeo = new THREE.BoxGeometry(0.55, 0.65, 0.45);
+    // Head (pill shape)
+    const headGeo = new THREE.CapsuleGeometry(0.6, 0.3, 16, 24);
     const head = new THREE.Mesh(headGeo, bodyMat);
-    head.position.y = 1.5;
-    this.avatar.add(head);
+    head.rotation.z = Math.PI / 2;
+    head.position.y = 1.2;
+    this.group.add(head);
 
-    // Face screen
-    const faceGeo = new THREE.PlaneGeometry(0.45, 0.4);
-    const face = new THREE.Mesh(faceGeo, screenMat);
-    face.position.set(0, 1.52, 0.23);
-    this.avatar.add(face);
+    // Visor (dark screen area)
+    const visorGeo = new THREE.CapsuleGeometry(0.48, 0.15, 12, 20);
+    const visor = new THREE.Mesh(visorGeo, darkMat);
+    visor.rotation.z = Math.PI / 2;
+    visor.position.set(0, 1.2, 0.35);
+    visor.scale.z = 0.5;
+    this.group.add(visor);
 
     // Eyes
-    const eyeGeo = new THREE.CircleGeometry(0.055, 32);
+    this.leftEye = this.createEye(-0.22, 1.25, 0.52);
+    this.rightEye = this.createEye(0.22, 1.25, 0.52);
     
-    this.avatar.leftEye = new THREE.Mesh(eyeGeo, eyeMat.clone());
-    this.avatar.leftEye.position.set(-0.11, 1.56, 0.235);
-    this.avatar.add(this.avatar.leftEye);
+    // Mouth (simple line that opens)
+    const mouthGeo = new THREE.BoxGeometry(0.25, 0.04, 0.05);
+    this.mouth = new THREE.Mesh(mouthGeo, glowMat);
+    this.mouth.position.set(0, 1.05, 0.52);
+    this.group.add(this.mouth);
 
-    this.avatar.rightEye = new THREE.Mesh(eyeGeo, eyeMat.clone());
-    this.avatar.rightEye.position.set(0.11, 1.56, 0.235);
-    this.avatar.add(this.avatar.rightEye);
+    // Ears/antennas
+    const earGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.15, 12);
+    const leftEar = new THREE.Mesh(earGeo, bodyMat);
+    leftEar.position.set(-0.75, 1.3, 0);
+    this.group.add(leftEar);
+    const rightEar = new THREE.Mesh(earGeo, bodyMat);
+    rightEar.position.set(0.75, 1.3, 0);
+    this.group.add(rightEar);
 
-    // Mouth (animated bar)
-    const mouthGeo = new THREE.PlaneGeometry(0.18, 0.04);
-    const mouthMat = new THREE.MeshStandardMaterial({
-      color: 0x00ffff,
-      emissive: 0x00ffff,
-      emissiveIntensity: 0.4,
+    // Body (rounded rectangle)
+    const bodyGeo = new THREE.CapsuleGeometry(0.4, 0.5, 12, 20);
+    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+    bodyMesh.position.y = 0.35;
+    this.group.add(bodyMesh);
+
+    // Chest light
+    const chestGeo = new THREE.CircleGeometry(0.1, 16);
+    const chest = new THREE.Mesh(chestGeo, accentMat);
+    chest.position.set(0, 0.45, 0.41);
+    this.group.add(chest);
+
+    // Arms (small stubs)
+    const armGeo = new THREE.CapsuleGeometry(0.1, 0.15, 8, 12);
+    const leftArm = new THREE.Mesh(armGeo, bodyMat);
+    leftArm.position.set(-0.55, 0.4, 0);
+    leftArm.rotation.z = 0.3;
+    this.group.add(leftArm);
+    const rightArm = new THREE.Mesh(armGeo, bodyMat);
+    rightArm.position.set(0.55, 0.4, 0);
+    rightArm.rotation.z = -0.3;
+    this.group.add(rightArm);
+
+    // Shadow
+    const shadowGeo = new THREE.CircleGeometry(0.5, 24);
+    const shadowMat = new THREE.MeshBasicMaterial({ 
+      color: 0x000000, 
+      transparent: true, 
+      opacity: 0.2 
     });
-    this.avatar.mouth = new THREE.Mesh(mouthGeo, mouthMat);
-    this.avatar.mouth.position.set(0, 1.42, 0.235);
-    this.avatar.add(this.avatar.mouth);
+    this.shadow = new THREE.Mesh(shadowGeo, shadowMat);
+    this.shadow.rotation.x = -Math.PI / 2;
+    this.shadow.position.y = -0.35;
+    this.group.add(this.shadow);
 
-    // Antenna
-    const antennaGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.18);
-    const antenna = new THREE.Mesh(antennaGeo, accentMat);
-    antenna.position.set(0, 1.92, 0);
-    this.avatar.add(antenna);
+    this.scene.add(this.group);
+  }
 
-    const ballGeo = new THREE.SphereGeometry(0.035);
-    this.avatar.antennaBall = new THREE.Mesh(ballGeo, accentMat.clone());
-    this.avatar.antennaBall.position.set(0, 2.03, 0);
-    this.avatar.add(this.avatar.antennaBall);
+  createEye(x, y, z) {
+    const group = new THREE.Group();
+    
+    // Outer glow
+    const outerGeo = new THREE.CircleGeometry(0.12, 16);
+    const outerMat = new THREE.MeshBasicMaterial({ 
+      color: 0x00d4ff,
+      transparent: true,
+      opacity: 0.3
+    });
+    const outer = new THREE.Mesh(outerGeo, outerMat);
+    group.add(outer);
 
-    // Neck
-    const neckGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.12);
-    const neck = new THREE.Mesh(neckGeo, bodyMat);
-    neck.position.y = 1.12;
-    this.avatar.add(neck);
+    // Inner eye
+    const innerGeo = new THREE.CircleGeometry(0.08, 16);
+    const innerMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff });
+    const inner = new THREE.Mesh(innerGeo, innerMat);
+    inner.position.z = 0.01;
+    group.add(inner);
 
-    // Body
-    const bodyGeo = new THREE.BoxGeometry(0.6, 0.55, 0.35);
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.8;
-    this.avatar.add(body);
+    // Eyelid for blinking
+    const lidGeo = new THREE.PlaneGeometry(0.3, 0.15);
+    const lidMat = new THREE.MeshBasicMaterial({ color: 0x2a2a35 });
+    const lid = new THREE.Mesh(lidGeo, lidMat);
+    lid.position.set(0, 0.15, 0.02);
+    lid.name = 'lid';
+    group.add(lid);
 
-    // Chest emblem (⚡)
-    const emblemGeo = new THREE.CircleGeometry(0.07, 6);
-    this.avatar.emblem = new THREE.Mesh(emblemGeo, accentMat.clone());
-    this.avatar.emblem.position.set(0, 0.85, 0.18);
-    this.avatar.add(this.avatar.emblem);
+    group.position.set(x, y, z);
+    this.group.add(group);
+    return group;
+  }
 
-    // Shoulders
-    const shoulderGeo = new THREE.SphereGeometry(0.08);
-    const leftShoulder = new THREE.Mesh(shoulderGeo, bodyMat);
-    leftShoulder.position.set(-0.35, 0.95, 0);
-    this.avatar.add(leftShoulder);
+  setExpression(type) {
+    this.eyeState = type;
+  }
 
-    const rightShoulder = new THREE.Mesh(shoulderGeo, bodyMat);
-    rightShoulder.position.set(0.35, 0.95, 0);
-    this.avatar.add(rightShoulder);
-
-    this.scene.add(this.avatar);
+  setMouthOpen(value) {
+    this.targetMouth = Math.max(0, Math.min(1, value));
   }
 
   animate() {
     requestAnimationFrame(() => this.animate());
-
+    
     const delta = this.clock.getDelta();
     const time = this.clock.getElapsedTime();
 
-    if (this.avatar) {
-      // Smooth mouth amplitude
-      this.mouthAmplitude += (this.targetMouthAmplitude - this.mouthAmplitude) * 0.3;
+    // Floating animation
+    this.floatPhase += delta * 1.5;
+    this.group.position.y = Math.sin(this.floatPhase) * 0.05;
+    this.shadow.scale.setScalar(1 - Math.sin(this.floatPhase) * 0.1);
 
-      // Idle bob
-      const bobAmount = this.state === 'thinking' ? 0.03 : 0.015;
-      const bobSpeed = this.state === 'thinking' ? 3 : 1.5;
-      this.avatar.position.y = Math.sin(time * bobSpeed) * bobAmount;
-      this.avatar.rotation.y = Math.sin(time * 0.5) * 0.04;
+    // Gentle sway
+    this.group.rotation.z = Math.sin(time * 0.5) * 0.02;
+    this.group.rotation.y = Math.sin(time * 0.3) * 0.05;
 
-      // Antenna glow
-      if (this.avatar.antennaBall) {
-        let intensity = 0.3;
-        if (this.state === 'listening') intensity = 0.5 + Math.sin(time * 4) * 0.3;
-        if (this.state === 'thinking') intensity = 0.4 + Math.sin(time * 8) * 0.4;
-        if (this.state === 'speaking') intensity = 0.6 + this.mouthAmplitude * 0.4;
-        this.avatar.antennaBall.material.emissiveIntensity = intensity;
-      }
+    // Smooth mouth animation
+    this.mouthOpen += (this.targetMouth - this.mouthOpen) * 0.3;
+    this.mouth.scale.y = 1 + this.mouthOpen * 3;
+    this.mouth.position.y = 1.05 - this.mouthOpen * 0.05;
 
-      // Eye glow based on state
-      const eyeIntensity = this.state === 'speaking' ? 0.8 : 
-                           this.state === 'listening' ? 0.7 : 0.5;
-      this.avatar.leftEye.material.emissiveIntensity = eyeIntensity;
-      this.avatar.rightEye.material.emissiveIntensity = eyeIntensity;
+    // Blinking
+    this.blinkTimer -= delta;
+    if (this.blinkTimer <= 0 && !this.isBlinking) {
+      this.isBlinking = true;
+      this.blinkTimer = 0.15;
+    } else if (this.isBlinking && this.blinkTimer <= 0) {
+      this.isBlinking = false;
+      this.blinkTimer = 2 + Math.random() * 3;
+    }
 
-      // Mouth animation (lip-sync)
-      if (this.avatar.mouth) {
-        if (this.state === 'speaking') {
-          // Animate mouth based on audio amplitude
-          const scale = 1 + this.mouthAmplitude * 2;
-          this.avatar.mouth.scale.y = scale;
-          this.avatar.mouth.material.emissiveIntensity = 0.4 + this.mouthAmplitude * 0.6;
-        } else {
-          this.avatar.mouth.scale.y = 1;
-          this.avatar.mouth.material.emissiveIntensity = 0.3;
-        }
-      }
+    const lidY = this.isBlinking ? 0 : 0.15;
+    [this.leftEye, this.rightEye].forEach(eye => {
+      const lid = eye.getObjectByName('lid');
+      if (lid) lid.position.y = lidY;
+    });
 
-      // Random blink
-      if (Math.random() < 0.003) {
-        this.blink();
-      }
-
-      // Emblem pulse
-      if (this.avatar.emblem) {
-        const pulse = this.state === 'thinking' ? 
-          0.4 + Math.sin(time * 6) * 0.3 : 
-          0.3 + Math.sin(time * 2) * 0.1;
-        this.avatar.emblem.material.emissiveIntensity = pulse;
-      }
+    // Expression-based eye changes
+    if (this.eyeState === 'happy') {
+      this.leftEye.rotation.z = 0.2;
+      this.rightEye.rotation.z = -0.2;
+    } else if (this.eyeState === 'thinking') {
+      this.leftEye.position.y = 1.28;
+      this.rightEye.position.y = 1.28;
+    } else {
+      this.leftEye.rotation.z = 0;
+      this.rightEye.rotation.z = 0;
+      this.leftEye.position.y = 1.25;
+      this.rightEye.position.y = 1.25;
     }
 
     this.renderer.render(this.scene, this.camera);
   }
 
-  blink() {
-    if (!this.avatar.leftEye || !this.avatar.rightEye) return;
-    
-    this.avatar.leftEye.scale.y = 0.1;
-    this.avatar.rightEye.scale.y = 0.1;
-    
-    setTimeout(() => {
-      if (this.avatar.leftEye) this.avatar.leftEye.scale.y = 1;
-      if (this.avatar.rightEye) this.avatar.rightEye.scale.y = 1;
-    }, 100);
-  }
-
-  setState(state) {
-    this.state = state;
-  }
-
-  setMouthAmplitude(amplitude) {
-    this.targetMouthAmplitude = amplitude;
-  }
-
-  onResize() {
-    const width = this.canvas.clientWidth;
-    const height = this.canvas.clientHeight;
-    
-    this.camera.aspect = width / height;
+  resize() {
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(w, h);
   }
 }
 
 // ============================================================================
-// WEBSOCKET CLIENT
+// SPEECH RECOGNITION
 // ============================================================================
 
-class WebSocketClient {
-  constructor(url) {
-    this.url = url;
-    this.ws = null;
-    this.reconnectAttempts = 0;
-    this.onMessage = null;
-    this.onConnect = null;
-    this.onDisconnect = null;
-    this.onError = null;
+function initSpeech() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    showError('Speech recognition not supported');
+    return false;
   }
 
-  connect() {
-    this.ws = new WebSocket(this.url);
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
 
-    this.ws.onopen = () => {
-      console.log('⚡ Connected to Spark server');
-      this.reconnectAttempts = 0;
-      if (this.onConnect) this.onConnect();
-    };
+  let finalTranscript = '';
+  let silenceTimer = null;
 
-    this.ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (this.onMessage) this.onMessage(data);
-      } catch (e) {
-        console.error('Invalid message:', e);
-      }
-    };
-
-    this.ws.onclose = () => {
-      console.log('Disconnected from Spark server');
-      if (this.onDisconnect) this.onDisconnect();
-      this.attemptReconnect();
-    };
-
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      if (this.onError) this.onError(error);
-    };
-  }
-
-  attemptReconnect() {
-    if (this.reconnectAttempts >= CONFIG.maxReconnectAttempts) {
-      console.error('Max reconnect attempts reached');
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = CONFIG.reconnectDelay * this.reconnectAttempts;
+  recognition.onresult = (event) => {
+    let interim = '';
     
-    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
-    setTimeout(() => this.connect(), delay);
-  }
-
-  send(type, data = {}) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type, ...data }));
-    }
-  }
-
-  disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-  }
-}
-
-// ============================================================================
-// WAVEFORM VISUALIZER
-// ============================================================================
-
-class WaveformVisualizer {
-  constructor(container) {
-    this.container = container;
-    this.bars = [];
-    this.init();
-  }
-
-  init() {
-    // Create wave bars
-    for (let i = 0; i < 12; i++) {
-      const bar = document.createElement('div');
-      bar.className = 'wave-bar';
-      bar.style.animationDelay = `${i * 0.05}s`;
-      this.container.appendChild(bar);
-      this.bars.push(bar);
-    }
-  }
-
-  show() {
-    this.container.classList.add('active');
-  }
-
-  hide() {
-    this.container.classList.remove('active');
-  }
-
-  setAmplitude(amplitude) {
-    // Vary bar heights based on amplitude
-    this.bars.forEach((bar, i) => {
-      const offset = Math.sin(Date.now() / 100 + i * 0.5);
-      const height = 8 + amplitude * 24 + offset * 4;
-      bar.style.height = `${Math.max(4, height)}px`;
-    });
-  }
-}
-
-// ============================================================================
-// MAIN APP
-// ============================================================================
-
-class SparkVoiceApp {
-  constructor() {
-    this.stt = new STTProvider();
-    this.audio = new AudioPlayer();
-    this.avatar = null;
-    this.ws = null;
-    this.waveform = null;
-
-    this.state = 'idle'; // idle | listening | thinking | speaking
-    this.audioChunks = [];
-    this.startTime = null;
-
-    // DOM elements
-    this.els = {
-      loading: document.getElementById('loading'),
-      statusIndicator: document.getElementById('status-indicator'),
-      statusText: document.getElementById('status-text'),
-      latency: document.getElementById('latency'),
-      transcript: document.getElementById('transcript'),
-      startBtn: document.getElementById('start-btn'),
-      muteBtn: document.getElementById('mute-btn'),
-      clearBtn: document.getElementById('clear-btn'),
-      waveform: document.getElementById('waveform'),
-      debug: document.getElementById('debug'),
-    };
-
-    this.isMuted = false;
-  }
-
-  async init() {
-    // Initialize avatar
-    const canvas = document.getElementById('avatar-canvas');
-    this.avatar = new AvatarRenderer(canvas);
-    this.avatar.init();
-
-    // Initialize waveform
-    this.waveform = new WaveformVisualizer(this.els.waveform);
-
-    // Set up audio callbacks
-    this.audio.onStart = () => {
-      this.setState('speaking');
-      this.waveform.show();
-    };
-
-    this.audio.onEnd = () => {
-      this.waveform.hide();
-      this.setState('listening');
-      this.stt.resume();
-    };
-
-    this.audio.onAmplitude = (amp) => {
-      this.avatar.setMouthAmplitude(amp);
-      this.waveform.setAmplitude(amp);
-    };
-
-    // Set up STT callbacks
-    this.stt.onTranscript = (text) => {
-      if (!this.isMuted && this.state === 'listening') {
-        this.sendTranscript(text);
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const result = event.results[i];
+      if (result.isFinal) {
+        finalTranscript += result[0].transcript + ' ';
+      } else {
+        interim += result[0].transcript;
       }
-    };
+    }
 
-    this.stt.onInterim = (text) => {
-      this.updateStatus('listening', `Hearing: "${text.slice(0, 40)}..."`);
-    };
+    // Show interim
+    if (interim) {
+      transcriptEl.textContent = interim;
+      transcriptEl.className = 'user';
+    }
 
-    this.stt.onError = (error) => {
-      this.updateStatus('error', error);
-    };
+    // Reset silence timer
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => {
+      if (finalTranscript.trim()) {
+        sendMessage(finalTranscript.trim());
+        finalTranscript = '';
+      }
+    }, CONFIG.silenceThreshold);
+  };
 
-    // Event listeners
-    this.els.startBtn.addEventListener('click', () => this.start());
-    this.els.muteBtn.addEventListener('click', () => this.toggleMute());
-    this.els.clearBtn.addEventListener('click', () => this.clearTranscript());
+  recognition.onerror = (e) => {
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      console.error('Speech error:', e.error);
+    }
+  };
 
-    // Hide loading
-    this.els.loading.classList.add('hidden');
+  recognition.onend = () => {
+    if (isListening && !isMuted) {
+      recognition.start();
+    }
+  };
 
-    this.log('Initialized');
+  return true;
+}
+
+function startListening() {
+  if (!recognition || isMuted) return;
+  try {
+    recognition.start();
+    isListening = true;
+    setStatus('listening', 'Listening...');
+    robot?.setExpression('normal');
+  } catch (e) {
+    // Already started
   }
+}
 
-  start() {
-    // Initialize STT
+function stopListening() {
+  if (!recognition) return;
+  try {
+    recognition.stop();
+    isListening = false;
+  } catch (e) {}
+}
+
+// ============================================================================
+// WEBSOCKET
+// ============================================================================
+
+function connect() {
+  ws = new WebSocket(CONFIG.wsUrl);
+
+  ws.onopen = () => {
+    connectionEl.className = 'connected';
+    body.classList.remove('loading');
+    startListening();
+  };
+
+  ws.onclose = () => {
+    connectionEl.className = '';
+    setStatus('', 'Disconnected');
+    setTimeout(connect, CONFIG.reconnectDelay);
+  };
+
+  ws.onerror = () => {
+    connectionEl.className = 'error';
+  };
+
+  ws.onmessage = (event) => {
     try {
-      this.stt.init();
+      const data = JSON.parse(event.data);
+      handleMessage(data);
     } catch (e) {
-      this.updateStatus('error', e.message);
-      return;
+      console.error('Message parse error:', e);
     }
+  };
+}
 
-    // Connect WebSocket
-    this.ws = new WebSocketClient(CONFIG.wsUrl);
-    
-    this.ws.onConnect = () => {
-      this.updateStatus('listening', 'Listening...');
-      this.stt.start();
-      this.setState('listening');
-    };
+function sendMessage(text) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  
+  transcriptEl.textContent = text;
+  transcriptEl.className = 'user';
+  setStatus('thinking', 'Thinking...');
+  robot?.setExpression('thinking');
+  stopListening();
+  
+  ws.send(JSON.stringify({ type: 'transcript', text }));
+}
 
-    this.ws.onDisconnect = () => {
-      this.updateStatus('error', 'Disconnected, reconnecting...');
-      this.stt.pause();
-    };
+// Audio chunk accumulator
+let audioChunks = [];
 
-    this.ws.onMessage = (data) => this.handleServerMessage(data);
-    
-    this.ws.connect();
-
-    // Update UI
-    this.els.startBtn.classList.add('hidden');
-    this.els.muteBtn.classList.remove('hidden');
-    this.els.clearBtn.classList.remove('hidden');
-  }
-
-  handleServerMessage(data) {
-    this.log(`Server: ${data.type}`);
-
-    switch (data.type) {
-      case 'ready':
-        console.log('Session:', data.sessionId);
-        break;
-
-      case 'ack':
-        // Server acknowledged our transcript
-        break;
-
-      case 'thinking':
-        this.setState('thinking');
-        this.updateStatus('thinking', 'Thinking...');
-        this.startTime = Date.now();
-        break;
-
-      case 'text':
-        this.addMessage(data.content, 'assistant');
-        const latency = this.startTime ? Date.now() - this.startTime : 0;
-        this.els.latency.textContent = latency ? `${latency}ms` : '';
-        break;
-
-      case 'audio_start':
-        this.audioChunks = [];
-        break;
-
-      case 'audio_chunk':
-        const bytes = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
-        this.audioChunks.push(bytes);
-        break;
-
-      case 'audio_end':
-        if (this.audioChunks.length > 0) {
-          this.audio.playChunks(this.audioChunks);
-        } else {
-          // No audio, just go back to listening
-          this.setState('listening');
-        }
-        break;
-
-      case 'tts_error':
-        console.warn('TTS failed:', data.message);
-        this.setState('listening');
-        break;
-
-      case 'error':
-        this.updateStatus('error', data.message);
-        setTimeout(() => {
-          if (this.state !== 'speaking') {
-            this.setState('listening');
-            this.updateStatus('listening', 'Listening...');
-          }
-        }, 3000);
-        break;
-    }
-  }
-
-  sendTranscript(text) {
-    this.addMessage(text, 'user');
-    this.updateStatus('thinking', 'Processing...');
-    this.stt.pause();
-    this.ws.send('transcript', { text, isFinal: true });
-  }
-
-  setState(state) {
-    this.state = state;
-    this.avatar.setState(state);
-    this.els.statusIndicator.className = state;
-  }
-
-  updateStatus(state, text) {
-    this.els.statusIndicator.className = state;
-    this.els.statusText.textContent = text;
-  }
-
-  addMessage(text, role) {
-    const div = document.createElement('div');
-    div.className = `message ${role}`;
-    div.textContent = role === 'user' ? text : `⚡ ${text}`;
-    this.els.transcript.appendChild(div);
-    this.els.transcript.parentElement.scrollTop = this.els.transcript.parentElement.scrollHeight;
-  }
-
-  toggleMute() {
-    this.isMuted = !this.isMuted;
-    
-    if (this.isMuted) {
-      this.stt.pause();
-      this.els.muteBtn.textContent = '🔇 Unmute';
-      this.els.muteBtn.classList.add('active');
-      this.updateStatus('', 'Muted');
-    } else {
-      this.stt.resume();
-      this.els.muteBtn.textContent = '🎤 Mute';
-      this.els.muteBtn.classList.remove('active');
-      this.updateStatus('listening', 'Listening...');
-    }
-  }
-
-  clearTranscript() {
-    this.els.transcript.innerHTML = '';
-  }
-
-  log(msg) {
-    if (CONFIG.debug) {
-      this.els.debug.textContent = msg;
-      console.log(`[Spark] ${msg}`);
-    }
+function handleMessage(data) {
+  switch (data.type) {
+    case 'ready':
+      setStatus('listening', 'Ready');
+      break;
+      
+    case 'thinking':
+      setStatus('thinking', 'Thinking...');
+      robot?.setExpression('thinking');
+      break;
+      
+    case 'text':
+      transcriptEl.textContent = data.content || '';
+      transcriptEl.className = 'assistant';
+      break;
+      
+    case 'audio_start':
+      audioChunks = [];
+      setStatus('speaking', 'Speaking...');
+      robot?.setExpression('happy');
+      break;
+      
+    case 'audio_chunk':
+      audioChunks.push(data.data);
+      if (data.final) {
+        const fullAudio = audioChunks.join('');
+        playAudio(fullAudio);
+      }
+      break;
+      
+    case 'audio_end':
+      setStatus('listening', 'Listening...');
+      robot?.setExpression('normal');
+      startListening();
+      break;
+      
+    case 'tts_error':
+      showError('Voice failed, see text');
+      setStatus('listening', 'Listening...');
+      startListening();
+      break;
+      
+    case 'error':
+      showError(data.message || 'Something went wrong');
+      setStatus('listening', 'Listening...');
+      startListening();
+      break;
   }
 }
 
 // ============================================================================
-// INITIALIZE
+// AUDIO PLAYBACK
 // ============================================================================
 
-const app = new SparkVoiceApp();
-app.init();
+async function playAudio(base64) {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    const buffer = await audioContext.decodeAudioData(bytes.buffer);
+    const source = audioContext.createBufferSource();
+    const analyser = audioContext.createAnalyser();
+    
+    source.buffer = buffer;
+    source.connect(analyser);
+    analyser.connect(audioContext.destination);
+    
+    // Lip sync
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const updateMouth = () => {
+      if (!source.buffer) return;
+      analyser.getByteFrequencyData(dataArray);
+      const avg = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+      robot?.setMouthOpen(avg / 255);
+      requestAnimationFrame(updateMouth);
+    };
+    updateMouth();
+    
+    source.onended = () => {
+      robot?.setMouthOpen(0);
+    };
+    
+    source.start(0);
+  } catch (e) {
+    console.error('Audio playback error:', e);
+  }
+}
+
+// ============================================================================
+// UI HELPERS
+// ============================================================================
+
+function setStatus(state, text) {
+  statusEl.textContent = text;
+  statusEl.className = state;
+}
+
+function showError(msg) {
+  errorEl.textContent = msg;
+  errorEl.classList.add('show');
+  setTimeout(() => errorEl.classList.remove('show'), 3000);
+}
+
+// ============================================================================
+// INIT
+// ============================================================================
+
+async function init() {
+  // Tailscale provides device-level auth - no additional auth needed
+  // Only devices on Parth's Tailscale network can reach this
+
+  // Create robot
+  robot = new CuteRobot(canvas);
+
+  // Init speech
+  if (!initSpeech()) {
+    showError('Speech recognition not available');
+  }
+
+  // Mute button
+  muteBtn.addEventListener('click', () => {
+    isMuted = !isMuted;
+    muteBtn.classList.toggle('active', isMuted);
+    
+    if (isMuted) {
+      stopListening();
+      setStatus('', 'Muted');
+    } else {
+      startListening();
+    }
+  });
+
+  // Connect
+  connect();
+}
+
+// Auto-start when DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
