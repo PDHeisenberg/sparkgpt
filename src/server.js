@@ -60,6 +60,35 @@ app.get('/api/config', (req, res) => {
   res.json({ modes: Object.keys(MODELS) });
 });
 
+// Articulations endpoint
+app.post('/api/articulate', express.json(), async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'No text' });
+    
+    const response = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-haiku-latest',
+        messages: [
+          { role: 'system', content: 'Rewrite the text with better grammar and clarity. Output ONLY the rewritten text, nothing else.' },
+          { role: 'user', content: text }
+        ],
+        max_tokens: 1000,
+      }),
+    });
+    if (!response.ok) throw new Error(`API: ${response.status}`);
+    const data = await response.json();
+    res.json({ result: data.choices?.[0]?.message?.content?.trim() || '' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Fetch chat history from session files
 import { readdirSync, statSync } from 'fs';
 
@@ -164,6 +193,37 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
     res.json({ messages });
   } catch (e) {
     console.error('Session history error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Today's reports
+app.get('/api/reports/today', async (req, res) => {
+  try {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const reports = [];
+    const patterns = ['☀️ MORNING', '📊 MARKET', '🔬 SCIENCE', '🌍 GEOPOLITICS', '📈 PRE-MARKET', '🤖 AI/TECH'];
+    
+    for (const f of readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.jsonl'))) {
+      const filepath = join(SESSIONS_DIR, f);
+      if (statSync(filepath).mtimeMs < today.getTime()) continue;
+      
+      for (const line of readFileSync(filepath, 'utf8').trim().split('\n')) {
+        try {
+          const entry = JSON.parse(line);
+          if (entry.type === 'message' && entry.message?.role === 'assistant') {
+            const text = extractTextFromContent(entry.message.content);
+            if (text?.length > 200 && patterns.some(p => text.includes(p))) {
+              if (!reports.some(r => r.summary.slice(0,100) === text.slice(0,100))) {
+                reports.push({ summary: text });
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+    res.json({ reports });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });

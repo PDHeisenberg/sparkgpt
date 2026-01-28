@@ -570,6 +570,81 @@ document.querySelectorAll('.shortcut').forEach(btn => {
   });
 });
 
+// Today's Reports button
+document.getElementById('todays-reports-btn')?.addEventListener('click', async () => {
+  if (welcomeEl) welcomeEl.style.display = 'none';
+  showThinking();
+  
+  try {
+    const response = await fetch('/api/reports/today');
+    const data = await response.json();
+    removeThinking();
+    
+    if (!data.reports?.length) {
+      addMsg('No reports yet today.', 'bot');
+      return;
+    }
+    
+    addMsg(`📊 Today's Reports (${data.reports.length})`, 'system');
+    data.reports.forEach(r => addMsg(r.summary, 'bot'));
+  } catch (e) {
+    removeThinking();
+    toast('Failed to load reports', true);
+  }
+});
+
+// Articulations mode
+let articulationsMode = false;
+
+document.getElementById('articulations-btn')?.addEventListener('click', () => {
+  articulationsMode = true;
+  if (welcomeEl) welcomeEl.style.display = 'none';
+  addMsg('✍️ Articulations mode. Type your text and I\'ll refine it. Send "exit" to leave.', 'system');
+  textInput?.focus();
+});
+
+// Wrap original send for articulations
+const _originalSend = send;
+send = function(text, sendMode) {
+  if (articulationsMode) {
+    if (text.toLowerCase() === 'exit') {
+      articulationsMode = false;
+      addMsg('Exited articulations mode.', 'system');
+      return;
+    }
+    sendArticulation(text);
+  } else {
+    _originalSend(text, sendMode);
+  }
+};
+
+async function sendArticulation(text) {
+  if (!text.trim()) return;
+  
+  addMsg(text, 'user');
+  showThinking();
+  
+  try {
+    const response = await fetch('/api/articulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    
+    const data = await response.json();
+    removeThinking();
+    
+    if (data.result) {
+      addMsg(data.result, 'bot');
+    } else {
+      toast('Failed to refine text', true);
+    }
+  } catch (e) {
+    removeThinking();
+    toast('Failed to refine text', true);
+  }
+}
+
 // File upload
 uploadBtn?.addEventListener('click', () => fileInput?.click());
 fileInput?.addEventListener('change', handleFileUpload);
