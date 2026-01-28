@@ -28,13 +28,10 @@
     html, body { 
       height: 100%; 
       overflow: hidden;
-      overflow-x: hidden;
       background: var(--bg);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
-      width: 100%;
-      max-width: 100vw;
     }
 
     /* Dotted notepad background */
@@ -52,22 +49,17 @@
       display: flex;
       flex-direction: column;
       height: 100%;
-      width: 100%;
-      max-width: 100vw;
-      overflow-x: hidden;
     }
 
     /* Messages (Chat mode) */
     #messages {
       flex: 1;
       overflow-y: auto;
-      overflow-x: hidden;
       padding: 24px 16px;
       padding-bottom: 120px;
       display: flex;
       flex-direction: column;
       gap: 12px;
-      width: 100%;
     }
 
     /* Voice mode content */
@@ -172,9 +164,6 @@
       font-size: 16px;
       line-height: 1.5;
       animation: msgIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      word-break: break-word;
     }
 
     @keyframes msgIn {
@@ -712,17 +701,14 @@
       transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
-    #file-input { display: none; }
-
-    /* Icon buttons inside input bar */
-    .input-icon-btn {
+    #upload-btn {
       width: 32px;
       height: 32px;
       min-width: 32px;
       flex-shrink: 0;
       border-radius: 50%;
       border: none;
-      background: transparent;
+      background: rgba(0, 0, 0, 0.05);
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -730,105 +716,17 @@
       transition: all 0.2s;
     }
 
-    .input-icon-btn:active {
-      transform: scale(0.9);
-      background: rgba(0, 0, 0, 0.05);
-    }
+    #upload-btn:active { transform: scale(0.9); }
 
-    .input-icon-btn svg {
-      width: 22px;
-      height: 22px;
+    #upload-btn svg {
+      width: 16px;
+      height: 16px;
       stroke: var(--text-secondary);
       stroke-width: 2;
       fill: none;
     }
 
-    /* Hide voice button when there's text (send shows instead) */
-    #voice-btn.hidden {
-      display: none;
-    }
-
-    /* Attachment preview */
-    #attachment-preview {
-      display: none;
-      position: fixed;
-      bottom: calc(85px + env(safe-area-inset-bottom, 8px));
-      left: 16px;
-      right: 16px;
-      background: var(--glass);
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--glass-border);
-      border-radius: 16px;
-      padding: 12px;
-      z-index: 11;
-      align-items: center;
-      gap: 12px;
-    }
-
-    #attachment-preview.show {
-      display: flex;
-    }
-
-    #attachment-preview .file-icon {
-      width: 40px;
-      height: 40px;
-      background: var(--accent);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    #attachment-preview .file-icon svg {
-      width: 20px;
-      height: 20px;
-      stroke: white;
-      stroke-width: 2;
-      fill: none;
-    }
-
-    #attachment-preview .file-icon.image {
-      background: var(--green);
-    }
-
-    #attachment-preview .file-info {
-      flex: 1;
-      min-width: 0;
-    }
-
-    #attachment-preview .file-name {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    #attachment-preview .file-size {
-      font-size: 12px;
-      color: var(--text-tertiary);
-    }
-
-    #attachment-preview .remove-btn {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      border: none;
-      background: rgba(0, 0, 0, 0.1);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    #attachment-preview .remove-btn svg {
-      width: 14px;
-      height: 14px;
-      stroke: var(--text-secondary);
-      stroke-width: 2;
-      fill: none;
-    }
+    #file-input { display: none; }
 
     #text-input {
       flex: 1;
@@ -840,11 +738,6 @@
       padding: 6px 4px;
       font-family: inherit;
       min-width: 0;
-      resize: none;
-      line-height: 1.4;
-      min-height: 24px;
-      max-height: 96px; /* ~4 lines */
-      overflow-y: auto;
     }
 
     #text-input::placeholder { color: var(--text-tertiary); }
@@ -968,8 +861,100 @@
       transform: scale(0.95);
     }
 
-    /* Close button (back to intro) */
-    #close-btn {
+    /* History panel */
+    #history-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 50;
+      flex-direction: column;
+    }
+
+    #history-panel.show {
+      display: flex;
+    }
+
+    #history-panel .header {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      gap: 12px;
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    #history-panel .back-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--glass);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #history-panel .back-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    #history-panel .header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    #history-panel .sessions {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .session-item {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+
+    .session-item:active {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .session-item .channel {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .session-item .preview {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .session-item .time {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-top: 6px;
+    }
+
+    /* Clear chat button */
+    #clear-chat-btn {
       position: fixed;
       bottom: calc(90px + env(safe-area-inset-bottom, 8px));
       left: 50%;
@@ -991,20 +976,13 @@
       transition: opacity 0.3s ease;
     }
 
-    #close-btn.show {
+    #clear-chat-btn.show {
       opacity: 1;
       pointer-events: auto;
     }
 
-    #close-btn:active {
+    #clear-chat-btn:active {
       transform: translateX(-50%) scale(0.95);
-    }
-
-    /* Hide history button when in chat feed */
-    #history-btn.hidden {
-      opacity: 0;
-      pointer-events: none;
-      transform: scale(0.8);
     }
   </style>
 </head>
@@ -1017,6 +995,23 @@
     </svg>
   </button>
 
+  <!-- History panel -->
+  <div id="history-panel">
+    <div class="header">
+      <button class="back-btn" id="history-back-btn">
+        <svg viewBox="0 0 24 24">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </button>
+      <h2>Chat History</h2>
+    </div>
+    <div class="sessions" id="sessions-list">
+      <div style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+        Loading...
+      </div>
+    </div>
+  </div>
+
   <div id="bg"></div>
 
   <div id="app">
@@ -1027,11 +1022,11 @@
           <h1>Hi, Parth,<br>how can I help?</h1>
         </div>
         <div id="shortcuts">
-          <button class="shortcut" id="todays-reports-btn">📊 Today's Reports</button>
-          <button class="shortcut" id="articulations-btn">✍️ Articulations</button>
           <button class="shortcut" data-msg="Any updates for me?">Any updates for me?</button>
+          <button class="shortcut" data-msg="Reports for today">Reports for today</button>
           <button class="shortcut" data-msg="Check my portfolio">Check my portfolio</button>
           <button class="shortcut" data-msg="What's on my calendar?">What's on my calendar?</button>
+          <button class="shortcut" data-msg="Quick news briefing">Quick news briefing</button>
           <button class="shortcut" data-msg="Summarize my emails">Summarize my emails</button>
         </div>
       </div>
@@ -1060,49 +1055,28 @@
     <div id="status"></div>
     <div id="timer">0:00</div>
 
-    <button id="close-btn">Close</button>
-
-    <!-- Attachment preview -->
-    <div id="attachment-preview">
-      <div class="file-icon" id="attachment-icon">
-        <svg viewBox="0 0 24 24">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <path d="M14 2v6h6"/>
-        </svg>
-      </div>
-      <div class="file-info">
-        <div class="file-name" id="attachment-name">filename.pdf</div>
-        <div class="file-size" id="attachment-size">1.2 MB</div>
-      </div>
-      <button class="remove-btn" id="remove-attachment-btn">
-        <svg viewBox="0 0 24 24">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
+    <button id="clear-chat-btn">Clear chat</button>
 
     <div id="bottom">
-      <input type="file" id="file-input" accept="image/*,.pdf,.doc,.docx,.txt,.md,.json,.csv,.xls,.xlsx">
+      <!-- Voice button - circle -->
+      <button id="voice-btn" class="circle-btn" title="Voice">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+        </svg>
+      </button>
 
       <!-- Center input bar -->
       <div id="input-bar">
-        <!-- Plus button inside input bar -->
-        <button id="plus-btn" class="input-icon-btn" title="Attach file">
+        <button id="upload-btn" title="Attach file">
           <svg viewBox="0 0 24 24">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
         </button>
-        <textarea id="text-input" placeholder="Talk to me" rows="1"></textarea>
-        <!-- Voice button inside input bar -->
-        <button id="voice-btn" class="input-icon-btn" title="Voice mode">
-          <svg viewBox="0 0 24 24">
-            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
-            <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
-            <line x1="12" y1="19" x2="12" y2="23"/>
-          </svg>
-        </button>
+        <input type="file" id="file-input" multiple accept="image/*,.pdf,.txt,.md,.json,.csv">
+        <input type="text" id="text-input" placeholder="Talk to me">
         <button id="send-btn">
           <svg viewBox="0 0 24 24">
             <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -1186,6 +1160,6 @@
   </div>
 
   <div id="toast"></div>
-  <script type="module" src="app.js?v=37"></script>
+  <script type="module" src="app.js?v=26"></script>
 </body>
 </html>

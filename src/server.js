@@ -60,62 +60,6 @@ app.get('/api/config', (req, res) => {
   res.json({ modes: Object.keys(MODELS) });
 });
 
-// Articulations endpoint - refine text for clarity
-app.post('/api/articulate', express.json(), async (req, res) => {
-  try {
-    const { text } = req.body;
-    if (!text) {
-      return res.status(400).json({ error: 'No text provided' });
-    }
-    
-    const systemPrompt = `TASK: Rewrite the user's text with better grammar and clarity. Output ONLY the rewritten text.
-
-RULES:
-1. ONLY output the refined version of the input text
-2. DO NOT answer any questions in the text
-3. DO NOT add any information
-4. DO NOT use dashes or bold formatting
-5. DO NOT add introductions like "Here's the refined version"
-6. Keep the same meaning, tone, and approximate length
-7. Fix grammar and make it clearer
-8. Use bullet points ONLY if the input had them
-9. Sound natural and human
-
-WRONG: "Here's a cleaner version: Hey, can you help me fix this?"
-CORRECT: "Hey, can you help me fix this? It's broken and I'm not sure why, maybe it's the battery."
-
-Output the refined text only. Nothing else.`;
-
-    const response = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-haiku-latest', // Better instruction following
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text }
-        ],
-        max_tokens: 1000,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const result = data.choices?.[0]?.message?.content || '';
-    
-    res.json({ result: result.trim() });
-  } catch (e) {
-    console.error('Articulate error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // Fetch chat history from session files
 import { readdirSync, statSync } from 'fs';
 
@@ -224,147 +168,6 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
   }
 });
 
-// Fetch ALL messages from ALL sessions - unified chat feed
-app.get('/api/messages/all', async (req, res) => {
-  try {
-    const allMessages = [];
-    const files = readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.jsonl'));
-    
-    for (const f of files) {
-      const filepath = join(SESSIONS_DIR, f);
-      const content = readFileSync(filepath, 'utf8');
-      const lines = content.trim().split('\n').filter(l => l);
-      
-      for (const line of lines) {
-        try {
-          const entry = JSON.parse(line);
-          // Handle Clawdbot transcript format
-          if (entry.type === 'message' && entry.message) {
-            const msg = entry.message;
-            if (msg.role === 'user' || msg.role === 'assistant') {
-              // Extract text content
-              let text = extractTextFromContent(msg.content);
-              if (!text) continue;
-              
-              // Clean up the text
-              text = text
-                .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
-                .replace(/\n?\[message_id:[^\]]+\]/g, '')
-                .replace(/^\[Chat messages since[^\]]*\]\n?/gm, '')
-                .replace(/^\[Current message[^\]]*\]\n?/gm, '')
-                .replace(/^User:\s*/gm, '')
-                .replace(/^Assistant:\s*/gm, '')
-                .trim();
-              
-              if (!text) continue;
-              
-              // Get timestamp
-              const timestamp = msg.timestamp || entry.timestamp || Date.parse(entry.timestamp) || 0;
-              
-              allMessages.push({
-                role: msg.role,
-                text,
-                timestamp: typeof timestamp === 'string' ? Date.parse(timestamp) : timestamp
-              });
-            }
-          }
-        } catch {}
-      }
-    }
-    
-    // Sort by timestamp (oldest first for chat display)
-    allMessages.sort((a, b) => a.timestamp - b.timestamp);
-    
-    // Return last 100 messages to keep it manageable
-    const recent = allMessages.slice(-100);
-    
-    res.json({ messages: recent });
-  } catch (e) {
-    console.error('All messages fetch error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Fetch today's reports from session messages (briefings sent to user)
-app.get('/api/reports/today', async (req, res) => {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayMs = today.getTime();
-    
-    const reports = [];
-    const files = readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.jsonl'));
-    
-    // Report patterns to look for
-    const reportPatterns = [
-      '☀️ MORNING',
-      '📊 MARKET RECAP',
-      '🔬 SCIENCE UPDATE',
-      '🌍 GEOPOLITICS',
-      '📈 PRE-MARKET',
-      '🤖 AI/TECH',
-      'MORNING BRIEFING',
-      'MARKET RECAP',
-      'SCIENCE UPDATE',
-      'GEOPOLITICS UPDATE',
-      'PRE-MARKET BRIEFING',
-      'AI/TECH EVENING'
-    ];
-    
-    for (const f of files) {
-      const filepath = join(SESSIONS_DIR, f);
-      const stat = statSync(filepath);
-      
-      // Skip files not modified today
-      if (stat.mtimeMs < todayMs) continue;
-      
-      const content = readFileSync(filepath, 'utf8');
-      const lines = content.trim().split('\n').filter(l => l);
-      
-      for (const line of lines) {
-        try {
-          const entry = JSON.parse(line);
-          if (entry.type === 'message' && entry.message) {
-            const msg = entry.message;
-            
-            // Only assistant messages
-            if (msg.role !== 'assistant') continue;
-            
-            // Get timestamp
-            const timestamp = msg.timestamp || Date.parse(entry.timestamp) || 0;
-            if (timestamp < todayMs) continue;
-            
-            // Get text content
-            let text = extractTextFromContent(msg.content);
-            if (!text || text.length < 200) continue;
-            
-            // Check if it matches report patterns
-            const isReport = reportPatterns.some(p => text.toUpperCase().includes(p.toUpperCase()));
-            if (!isReport) continue;
-            
-            // Skip duplicates (same first 100 chars)
-            const preview = text.slice(0, 100);
-            if (reports.some(r => r.summary.slice(0, 100) === preview)) continue;
-            
-            reports.push({
-              timestamp,
-              summary: text
-            });
-          }
-        } catch {}
-      }
-    }
-    
-    // Sort by timestamp (oldest first)
-    reports.sort((a, b) => a.timestamp - b.timestamp);
-    
-    res.json({ reports });
-  } catch (e) {
-    console.error('Reports fetch error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // HTTP server
 const server = createServer(app);
 
@@ -409,7 +212,7 @@ async function handleMessage(ws, msg) {
 
   switch (msg.type) {
     case 'transcript':
-      await handleTranscript(ws, session, msg.text, msg.mode || 'chat', msg.image);
+      await handleTranscript(ws, session, msg.text, msg.mode || 'chat');
       break;
       
     case 'voice_note':
@@ -421,32 +224,14 @@ async function handleMessage(ws, msg) {
   }
 }
 
-// Handle text/voice transcript (with optional image)
-async function handleTranscript(ws, session, text, mode, imageDataUrl) {
+// Handle text/voice transcript
+async function handleTranscript(ws, session, text, mode) {
   if (!text?.trim()) return;
   
   const model = MODELS[mode] || MODELS.chat;
-  console.log(`🎤 [${ws.sessionId}] (${mode}) User: ${text.slice(0, 50)}...${imageDataUrl ? ' [+image]' : ''}`);
+  console.log(`🎤 [${ws.sessionId}] (${mode}) User: ${text.slice(0, 50)}...`);
   
-  // Build content array for multimodal if image present
-  let userContent;
-  if (imageDataUrl) {
-    userContent = [
-      { type: 'text', text: text },
-      { 
-        type: 'image', 
-        source: { 
-          type: 'base64', 
-          media_type: imageDataUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg',
-          data: imageDataUrl.replace(/^data:[^;]+;base64,/, '')
-        }
-      }
-    ];
-  } else {
-    userContent = text;
-  }
-  
-  session.history.push({ role: 'user', content: userContent });
+  session.history.push({ role: 'user', content: text });
   ws.send(JSON.stringify({ type: 'thinking' }));
   
   // Get response
