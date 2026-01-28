@@ -51,7 +51,7 @@
       height: 100%;
     }
 
-    /* Messages */
+    /* Messages (Chat mode) */
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -60,6 +60,101 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+    }
+
+    /* Voice mode content */
+    #voice-content {
+      display: none;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      padding-bottom: 120px;
+    }
+
+    body.voice-mode #voice-content {
+      display: flex;
+    }
+
+    body.voice-mode #messages {
+      display: none;
+    }
+
+    #voice-content .transcript {
+      font-size: 28px;
+      font-weight: 500;
+      color: var(--text);
+      text-align: center;
+      line-height: 1.4;
+      max-width: 100%;
+    }
+
+    #voice-content .transcript.placeholder {
+      color: var(--text-tertiary);
+      font-weight: 400;
+    }
+
+    /* Notes mode content */
+    #notes-content {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      padding-bottom: 120px;
+      gap: 24px;
+    }
+
+    body.notes-mode #notes-content {
+      display: flex;
+    }
+
+    body.notes-mode #messages {
+      display: none;
+    }
+
+    #notes-content .timer {
+      font-size: 72px;
+      font-weight: 300;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 2px;
+    }
+
+    #notes-content .waveform {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 60px;
+    }
+
+    #notes-content .waveform .bar {
+      width: 4px;
+      height: 8px;
+      background: var(--red);
+      border-radius: 2px;
+      animation: wave-large 0.5s ease-in-out infinite;
+    }
+
+    #notes-content .waveform .bar:nth-child(1) { animation-delay: 0s; }
+    #notes-content .waveform .bar:nth-child(2) { animation-delay: 0.1s; }
+    #notes-content .waveform .bar:nth-child(3) { animation-delay: 0.2s; }
+    #notes-content .waveform .bar:nth-child(4) { animation-delay: 0.15s; }
+    #notes-content .waveform .bar:nth-child(5) { animation-delay: 0.05s; }
+    #notes-content .waveform .bar:nth-child(6) { animation-delay: 0.25s; }
+    #notes-content .waveform .bar:nth-child(7) { animation-delay: 0.1s; }
+
+    @keyframes wave-large {
+      0%, 100% { height: 8px; }
+      50% { height: 50px; }
+    }
+
+    #notes-content .status {
+      font-size: 15px;
+      color: var(--red);
+      font-weight: 500;
     }
 
     .msg {
@@ -89,6 +184,9 @@
       border: 1px solid var(--glass-border);
       box-shadow: 0 2px 8px var(--glass-shadow);
       white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      word-break: break-word;
     }
 
     .msg.bot p { margin-bottom: 12px; }
@@ -100,6 +198,7 @@
       border-radius: 4px;
       font-family: 'SF Mono', monospace;
       font-size: 14px;
+      word-break: break-all;
     }
 
     .msg.system {
@@ -218,6 +317,18 @@
       gap: 10px;
       z-index: 10;
       box-sizing: border-box;
+    }
+
+    #bottom::before {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 120px;
+      background: linear-gradient(to top, rgba(245, 245, 247, 0.95) 0%, rgba(245, 245, 247, 0.8) 50%, rgba(245, 245, 247, 0) 100%);
+      pointer-events: none;
+      z-index: -1;
     }
 
     /* Circle buttons */
@@ -391,6 +502,136 @@
     }
 
     #close-voice-btn svg {
+      width: 22px;
+      height: 22px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    /* Notes bar */
+    #notes-bar {
+      display: none;
+      flex: 1;
+      align-items: center;
+      gap: 12px;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 2px solid var(--red);
+      box-shadow: 0 4px 20px rgba(255, 59, 48, 0.2);
+      border-radius: 28px;
+      padding: 8px 16px;
+      min-height: 56px;
+    }
+
+    #bottom.notes-active #notes-bar {
+      display: flex;
+    }
+
+    #bottom.notes-active .circle-btn,
+    #bottom.notes-active #input-bar {
+      display: none;
+    }
+
+    #notes-bar .note-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #notes-bar .note-icon svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--red);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    #notes-bar .waveform-mini {
+      flex: 1;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+    }
+
+    #notes-bar .waveform-mini .bar {
+      width: 3px;
+      height: 4px;
+      background: var(--red);
+      border-radius: 2px;
+      animation: wave 0.5s ease-in-out infinite;
+    }
+
+    /* Close notes button */
+    #close-notes-btn {
+      display: none;
+      width: 56px;
+      height: 56px;
+      min-width: 56px;
+      min-height: 56px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      border: none;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 4px 20px var(--glass-shadow);
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #bottom.notes-active #close-notes-btn {
+      display: flex;
+    }
+
+    #close-notes-btn:active {
+      transform: scale(0.9);
+    }
+
+    #close-notes-btn svg {
+      width: 22px;
+      height: 22px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    /* Delete notes button */
+    #delete-notes-btn {
+      display: none;
+      width: 56px;
+      height: 56px;
+      min-width: 56px;
+      min-height: 56px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      border: none;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 4px 20px var(--glass-shadow);
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #bottom.notes-active #delete-notes-btn {
+      display: flex;
+    }
+
+    #delete-notes-btn:active {
+      transform: scale(0.9);
+    }
+
+    #delete-notes-btn svg {
       width: 22px;
       height: 22px;
       stroke: var(--text-secondary);
@@ -586,12 +827,195 @@
     #toast.error { background: var(--red); color: white; border: none; }
 
     #messages::-webkit-scrollbar { width: 0; }
+
+    /* Chat history button */
+    #history-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 2px 12px var(--glass-shadow);
+      cursor: pointer;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #history-btn svg {
+      width: 22px;
+      height: 22px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    #history-btn:active {
+      transform: scale(0.95);
+    }
+
+    /* History panel */
+    #history-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 50;
+      flex-direction: column;
+    }
+
+    #history-panel.show {
+      display: flex;
+    }
+
+    #history-panel .header {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      gap: 12px;
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    #history-panel .back-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--glass);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #history-panel .back-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    #history-panel .header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    #history-panel .sessions {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .session-item {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+
+    .session-item:active {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .session-item .channel {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .session-item .preview {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .session-item .time {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-top: 6px;
+    }
+
+    /* Clear chat button */
+    #clear-chat-btn {
+      position: fixed;
+      bottom: calc(90px + env(safe-area-inset-bottom, 8px));
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 2px 12px var(--glass-shadow);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      z-index: 9;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    #clear-chat-btn.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #clear-chat-btn:active {
+      transform: translateX(-50%) scale(0.95);
+    }
   </style>
 </head>
 <body>
+  <!-- History button -->
+  <button id="history-btn" title="Chat History">
+    <svg viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10"/>
+      <polyline points="12 6 12 12 16 14"/>
+    </svg>
+  </button>
+
+  <!-- History panel -->
+  <div id="history-panel">
+    <div class="header">
+      <button class="back-btn" id="history-back-btn">
+        <svg viewBox="0 0 24 24">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </button>
+      <h2>Chat History</h2>
+    </div>
+    <div class="sessions" id="sessions-list">
+      <div style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+        Loading...
+      </div>
+    </div>
+  </div>
+
   <div id="bg"></div>
 
   <div id="app">
+    <!-- Chat mode content -->
     <div id="messages">
       <div id="welcome">
         <div id="greeting">
@@ -608,8 +1032,30 @@
       </div>
     </div>
 
+    <!-- Voice mode content -->
+    <div id="voice-content">
+      <div class="transcript placeholder" id="voice-transcript">Start speaking...</div>
+    </div>
+
+    <!-- Notes mode content -->
+    <div id="notes-content">
+      <div class="timer" id="notes-timer">0:00</div>
+      <div class="waveform">
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+      </div>
+      <div class="status">Recording...</div>
+    </div>
+
     <div id="status"></div>
     <div id="timer">0:00</div>
+
+    <button id="clear-chat-btn">Clear chat</button>
 
     <div id="bottom">
       <!-- Voice button - circle -->
@@ -664,6 +1110,43 @@
         </svg>
       </button>
 
+      <!-- Notes mode: Close button -->
+      <button id="close-notes-btn" title="Save">
+        <svg viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+
+      <!-- Notes mode: Delete button -->
+      <button id="delete-notes-btn" title="Discard">
+        <svg viewBox="0 0 24 24">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          <line x1="10" y1="11" x2="10" y2="17"/>
+          <line x1="14" y1="11" x2="14" y2="17"/>
+        </svg>
+      </button>
+
+      <!-- Notes mode bar -->
+      <div id="notes-bar">
+        <div class="waveform-mini">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+        <div class="note-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <path d="M14 2v6h6"/>
+            <path d="M16 13H8"/>
+            <path d="M16 17H8"/>
+          </svg>
+        </div>
+      </div>
+
       <!-- Notes button - circle -->
       <button id="notes-btn" class="circle-btn" title="Voice Note">
         <svg viewBox="0 0 24 24">
@@ -677,6 +1160,6 @@
   </div>
 
   <div id="toast"></div>
-  <script type="module" src="app.js?v=10"></script>
+  <script type="module" src="app.js?v=26"></script>
 </body>
 </html>

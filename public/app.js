@@ -24,6 +24,22 @@ const voiceBar = document.getElementById('voice-bar');
 const closeVoiceBtn = document.getElementById('close-voice-btn');
 const waveformEl = document.getElementById('waveform');
 
+// Voice content
+const voiceContent = document.getElementById('voice-content');
+const voiceTranscript = document.getElementById('voice-transcript');
+
+// Notes content & bar
+const notesContent = document.getElementById('notes-content');
+const notesTimerEl = document.getElementById('notes-timer');
+const notesBar = document.getElementById('notes-bar');
+const closeNotesBtn = document.getElementById('close-notes-btn');
+const deleteNotesBtn = document.getElementById('delete-notes-btn');
+const clearChatBtn = document.getElementById('clear-chat-btn');
+const historyBtn = document.getElementById('history-btn');
+const historyPanel = document.getElementById('history-panel');
+const historyBackBtn = document.getElementById('history-back-btn');
+const sessionsList = document.getElementById('sessions-list');
+
 // State
 let ws = null;
 let mode = 'chat'; // chat | voice | notes
@@ -158,16 +174,25 @@ function initSpeech() {
       }
     }
 
-    showInterim(final + interim);
+    // Update big transcript display
+    const currentText = (final + interim).trim();
+    if (currentText && voiceTranscript) {
+      voiceTranscript.textContent = currentText;
+      voiceTranscript.classList.remove('placeholder');
+    }
 
     clearTimeout(timer);
     timer = setTimeout(() => {
       setVoiceActive(false);
       const text = final.trim();
       if (text && !isProcessing) {
-        clearInterim();
         send(text, 'voice');
         final = '';
+        // Reset transcript
+        if (voiceTranscript) {
+          voiceTranscript.textContent = 'Start speaking...';
+          voiceTranscript.classList.add('placeholder');
+        }
       }
     }, CONFIG.silenceMs);
   };
@@ -199,17 +224,23 @@ function startVoice() {
   
   mode = 'voice';
   isListening = true;
+  document.body.classList.add('voice-mode');
   bottomEl?.classList.add('voice-active');
-  setStatus('Listening...');
+  
+  // Reset transcript
+  if (voiceTranscript) {
+    voiceTranscript.textContent = 'Start speaking...';
+    voiceTranscript.classList.add('placeholder');
+  }
   
   try { recognition.start(); } catch {}
 }
 
 function stopVoice() {
   isListening = false;
+  document.body.classList.remove('voice-mode');
   bottomEl?.classList.remove('voice-active');
   voiceBar?.classList.remove('speaking');
-  setStatus('');
   try { recognition.stop(); } catch {}
   mode = 'chat';
 }
@@ -276,10 +307,12 @@ function submitText() {
 // NOTES MODE
 // ============================================================================
 
+let mediaStream = null;
+
 async function initRecorder() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(mediaStream);
     
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) audioChunks.push(e.data);
@@ -293,6 +326,14 @@ async function initRecorder() {
   }
 }
 
+function releaseMicrophone() {
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+  mediaRecorder = null;
+}
+
 function startRecording() {
   if (!mediaRecorder) {
     initRecorder().then(ok => ok && startRecording());
@@ -304,9 +345,9 @@ function startRecording() {
   recordStart = Date.now();
   mode = 'notes';
   
-  notesBtn.classList.add('recording');
-  timerEl.classList.add('show');
-  setStatus('Recording...');
+  // Show notes mode
+  document.body.classList.add('notes-mode');
+  bottomEl?.classList.add('notes-active');
   
   timerInterval = setInterval(updateTimer, 1000);
   updateTimer();
@@ -316,19 +357,42 @@ function stopRecording() {
   if (mediaRecorder?.state !== 'recording') return;
   mediaRecorder.stop();
   clearInterval(timerInterval);
-  notesBtn.classList.remove('recording');
-  timerEl.classList.remove('show');
-  setStatus('Processing...');
+  
+  // Hide notes mode
+  document.body.classList.remove('notes-mode');
+  bottomEl?.classList.remove('notes-active');
+  mode = 'chat';
+}
+
+function discardRecording() {
+  if (mediaRecorder?.state !== 'recording') return;
+  
+  mediaRecorder.onstop = () => {
+    toast('Recording discarded');
+    releaseMicrophone();
+  };
+  
+  mediaRecorder.stop();
+  clearInterval(timerInterval);
+  audioChunks = [];
+  
+  document.body.classList.remove('notes-mode');
+  bottomEl?.classList.remove('notes-active');
+  mode = 'chat';
 }
 
 function updateTimer() {
   const s = Math.floor((Date.now() - recordStart) / 1000);
-  timerEl.textContent = `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+  const timeStr = `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+  if (notesTimerEl) notesTimerEl.textContent = timeStr;
 }
 
 async function finishRecording() {
   const blob = new Blob(audioChunks, { type: 'audio/webm' });
   const duration = Math.floor((Date.now() - recordStart) / 1000);
+  
+  // Release microphone
+  releaseMicrophone();
   
   addMsg(`🎙️ Voice note (${Math.floor(duration/60)}:${(duration%60).toString().padStart(2,'0')})`, 'system');
   
@@ -358,12 +422,16 @@ function sendNote(audio, duration) {
 }
 
 notesBtn.addEventListener('click', () => {
-  if (mediaRecorder?.state === 'recording') {
-    stopRecording();
-  } else {
-    if (isListening) stopVoice();
-    startRecording();
-  }
+  if (isListening) stopVoice();
+  startRecording();
+});
+
+closeNotesBtn?.addEventListener('click', () => {
+  stopRecording();
+});
+
+deleteNotesBtn?.addEventListener('click', () => {
+  discardRecording();
 });
 
 // ============================================================================
@@ -542,4 +610,180 @@ function readAsText(file) {
     reader.onerror = reject;
     reader.readAsText(file);
   });
+}
+
+// ============================================================================
+// CLEAR CHAT BUTTON
+// ============================================================================
+
+let clearBtnTimeout = null;
+let hasMessages = false;
+
+function checkHasMessages() {
+  // Check if there are any messages (not just welcome)
+  const msgs = messagesEl?.querySelectorAll('.msg:not(.system)');
+  hasMessages = msgs && msgs.length > 0;
+}
+
+function showClearBtn() {
+  if (hasMessages && mode === 'chat') {
+    clearChatBtn?.classList.add('show');
+  }
+}
+
+function hideClearBtn() {
+  clearChatBtn?.classList.remove('show');
+}
+
+function resetClearBtnTimer() {
+  hideClearBtn();
+  clearTimeout(clearBtnTimeout);
+  clearBtnTimeout = setTimeout(() => {
+    checkHasMessages();
+    showClearBtn();
+  }, 2000);
+}
+
+// Hide on scroll
+messagesEl?.addEventListener('scroll', () => {
+  hideClearBtn();
+  resetClearBtnTimer();
+});
+
+// Hide on any interaction, show after 2s idle
+document.addEventListener('click', () => {
+  resetClearBtnTimer();
+});
+
+document.addEventListener('touchstart', () => {
+  resetClearBtnTimer();
+});
+
+// Clear chat action
+clearChatBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  
+  // Stop any ongoing processing
+  isProcessing = false;
+  removeThinking();
+  
+  // Remove all messages
+  const msgs = messagesEl?.querySelectorAll('.msg');
+  msgs?.forEach(msg => msg.remove());
+  
+  // Remove thinking indicator if present
+  const thinking = document.getElementById('thinking-indicator');
+  if (thinking) thinking.remove();
+  
+  // Show welcome again
+  if (welcomeEl) welcomeEl.style.display = '';
+  
+  hideClearBtn();
+  hasMessages = false;
+  toast('Chat cleared');
+});
+
+// Start the timer
+resetClearBtnTimer();
+
+// ============================================================================
+// CHAT HISTORY
+// ============================================================================
+
+historyBtn?.addEventListener('click', () => {
+  historyPanel?.classList.add('show');
+  loadSessions();
+});
+
+historyBackBtn?.addEventListener('click', () => {
+  historyPanel?.classList.remove('show');
+});
+
+async function loadSessions() {
+  if (!sessionsList) return;
+  
+  sessionsList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-tertiary);">Loading...</div>';
+  
+  try {
+    const response = await fetch('/api/sessions');
+    const data = await response.json();
+    
+    if (!data.sessions?.length) {
+      sessionsList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-tertiary);">No chat history</div>';
+      return;
+    }
+    
+    sessionsList.innerHTML = data.sessions.map(s => {
+      const time = new Date(s.updatedAt).toLocaleString();
+      const channelLabel = s.channel === 'whatsapp' ? '📱 WhatsApp' : '🌐 Web';
+      return `
+        <div class="session-item" data-key="${s.key}">
+          <div class="channel">${channelLabel}</div>
+          <div class="preview">${escapeHtml(s.preview)}</div>
+          <div class="time">${time}</div>
+        </div>
+      `;
+    }).join('');
+    
+    // Add click handlers
+    sessionsList.querySelectorAll('.session-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const key = item.dataset.key;
+        loadSessionHistory(key);
+      });
+    });
+    
+  } catch (e) {
+    console.error('Failed to load sessions:', e);
+    sessionsList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-tertiary);">Failed to load history</div>';
+  }
+}
+
+async function loadSessionHistory(sessionKey) {
+  // For now, just show the session in the main chat
+  // Could expand to a detailed view later
+  historyPanel?.classList.remove('show');
+  
+  try {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}`);
+    const data = await response.json();
+    
+    if (!data.messages?.length) {
+      toast('No messages in this session');
+      return;
+    }
+    
+    // Clear current messages
+    const msgs = messagesEl?.querySelectorAll('.msg');
+    msgs?.forEach(msg => msg.remove());
+    if (welcomeEl) welcomeEl.style.display = 'none';
+    
+    // Show messages from history
+    data.messages.forEach(m => {
+      if (m.role === 'user') {
+        const text = m.content?.[0]?.text || m.content || '';
+        if (text && !text.startsWith('[message_id:')) {
+          addMsg(text.replace(/\n\[message_id:.*\]$/, ''), 'user');
+        }
+      } else if (m.role === 'assistant') {
+        const textPart = m.content?.find?.(c => c.type === 'text');
+        const text = textPart?.text || m.content || '';
+        if (text) {
+          addMsg(text, 'bot');
+        }
+      }
+    });
+    
+    hasMessages = true;
+    
+  } catch (e) {
+    console.error('Failed to load session history:', e);
+    toast('Failed to load chat', true);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }

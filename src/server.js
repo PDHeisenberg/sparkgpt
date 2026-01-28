@@ -60,6 +60,114 @@ app.get('/api/config', (req, res) => {
   res.json({ modes: Object.keys(MODELS) });
 });
 
+// Fetch chat history from session files
+import { readdirSync, statSync } from 'fs';
+
+const SESSIONS_DIR = '/home/heisenberg/.clawdbot/agents/main/sessions';
+
+function extractTextFromContent(content) {
+  if (!content) return null;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    const textPart = content.find(c => c.type === 'text');
+    return textPart?.text || null;
+  }
+  return null;
+}
+
+app.get('/api/sessions', async (req, res) => {
+  try {
+    const files = readdirSync(SESSIONS_DIR)
+      .filter(f => f.endsWith('.jsonl'))
+      .map(f => {
+        const filepath = join(SESSIONS_DIR, f);
+        const stat = statSync(filepath);
+        const content = readFileSync(filepath, 'utf8');
+        const lines = content.trim().split('\n').filter(l => l);
+        
+        // Get last user message as preview
+        let preview = 'No messages';
+        let channel = 'spark';
+        
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const entry = JSON.parse(lines[i]);
+            // Handle Clawdbot transcript format: {"type":"message","message":{...}}
+            const msg = entry.message || entry;
+            if (msg.role === 'user') {
+              const text = extractTextFromContent(msg.content);
+              if (text) {
+                // Check if WhatsApp
+                if (text.includes('[message_id:') || text.includes('[WhatsApp')) channel = 'whatsapp';
+                
+                // Clean up preview - remove all metadata
+                preview = text
+                  .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
+                  .replace(/\n?\[message_id:[^\]]+\]/g, '')
+                  .replace(/^\[Chat messages since[^\]]*\]\n?/gm, '')
+                  .replace(/^\[Current message[^\]]*\]\n?/gm, '')
+                  .replace(/^User:\s*/gm, '')
+                  .replace(/^Assistant:[^\n]*\n?/gm, '')
+                  .trim()
+                  .slice(0, 100);
+                
+                // Skip if preview is empty after cleaning
+                if (!preview) continue;
+                break;
+              }
+            }
+          } catch {}
+        }
+        
+        return {
+          key: f.replace('.jsonl', ''),
+          channel,
+          updatedAt: stat.mtimeMs,
+          preview,
+        };
+      })
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 20);
+    
+    res.json({ sessions: files });
+  } catch (e) {
+    console.error('Sessions fetch error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Fetch specific session history
+app.get('/api/sessions/:sessionId', async (req, res) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const filepath = join(SESSIONS_DIR, `${sessionId}.jsonl`);
+    
+    if (!existsSync(filepath)) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    const content = readFileSync(filepath, 'utf8');
+    const messages = content.trim().split('\n')
+      .filter(l => l)
+      .map(l => {
+        try {
+          const entry = JSON.parse(l);
+          // Handle Clawdbot transcript format
+          if (entry.type === 'message' && entry.message) {
+            return entry.message;
+          }
+          return null;
+        } catch { return null; }
+      })
+      .filter(m => m && (m.role === 'user' || m.role === 'assistant'));
+    
+    res.json({ messages });
+  } catch (e) {
+    console.error('Session history error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // HTTP server
 const server = createServer(app);
 
