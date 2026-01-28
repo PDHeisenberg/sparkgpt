@@ -9,7 +9,7 @@ const CONFIG = {
 
 // Elements
 const messagesEl = document.getElementById('messages');
-const shortcutsEl = document.getElementById('shortcuts');
+const welcomeEl = document.getElementById('welcome');
 const textInput = document.getElementById('text-input');
 const sendBtn = document.getElementById('send-btn');
 const voiceBtn = document.getElementById('voice-btn');
@@ -41,7 +41,7 @@ let timerInterval = null;
 // ============================================================================
 
 function addMsg(text, type) {
-  if (shortcutsEl) shortcutsEl.style.display = 'none';
+  if (welcomeEl) welcomeEl.style.display = 'none';
   const el = document.createElement('div');
   el.className = `msg ${type}`;
   
@@ -79,7 +79,7 @@ function formatMessage(text) {
 }
 
 function showThinking() {
-  if (shortcutsEl) shortcutsEl.style.display = 'none';
+  if (welcomeEl) welcomeEl.style.display = 'none';
   removeThinking();
   const el = document.createElement('div');
   el.className = 'msg bot thinking';
