@@ -259,6 +259,135 @@
       max-width: 100%;
     }
 
+    /* Voice mode active state */
+    #voice-bar {
+      display: none;
+      flex: 1;
+      align-items: center;
+      gap: 12px;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 2px solid var(--green);
+      box-shadow: 0 4px 20px rgba(52, 199, 89, 0.2);
+      border-radius: 28px;
+      padding: 8px 16px;
+      min-height: 56px;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #bottom.voice-active #voice-bar {
+      display: flex;
+    }
+
+    #bottom.voice-active .circle-btn,
+    #bottom.voice-active #input-bar {
+      display: none;
+    }
+
+    #voice-bar .mic-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    #voice-bar .mic-icon svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--green);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    #voice-bar .mic-icon::before,
+    #voice-bar .mic-icon::after {
+      content: '✦';
+      position: absolute;
+      font-size: 8px;
+      color: var(--green);
+      animation: sparkle 1.5s ease-in-out infinite;
+    }
+
+    #voice-bar .mic-icon::before {
+      top: 0;
+      right: 0;
+      animation-delay: 0s;
+    }
+
+    #voice-bar .mic-icon::after {
+      bottom: 4px;
+      left: 0;
+      animation-delay: 0.5s;
+    }
+
+    @keyframes sparkle {
+      0%, 100% { opacity: 0.3; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* Voice waveform */
+    #waveform {
+      flex: 1;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+    }
+
+    .wave-bar {
+      width: 3px;
+      height: 4px;
+      background: #999;
+      border-radius: 2px;
+      transition: height 0.1s ease;
+    }
+
+    #voice-bar.speaking .wave-bar {
+      animation: wave 0.5s ease-in-out infinite;
+    }
+
+    .wave-bar:nth-child(1) { animation-delay: 0s; }
+    .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.1s; }
+    .wave-bar:nth-child(5) { animation-delay: 0s; }
+
+    @keyframes wave {
+      0%, 100% { height: 4px; }
+      50% { height: 20px; }
+    }
+
+    /* Close button */
+    #close-voice-btn {
+      width: 36px;
+      height: 36px;
+      min-width: 36px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0, 0, 0, 0.08);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    #close-voice-btn:active {
+      transform: scale(0.9);
+    }
+
+    #close-voice-btn svg {
+      width: 18px;
+      height: 18px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+
     .circle-btn::before {
       content: '';
       position: absolute;
@@ -495,6 +624,30 @@
         <button id="send-btn">
           <svg viewBox="0 0 24 24">
             <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Voice mode bar (shown when voice active) -->
+      <div id="voice-bar">
+        <div class="mic-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+            <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+          </svg>
+        </div>
+        <div id="waveform">
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+        </div>
+        <button id="close-voice-btn" title="Close">
+          <svg viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       </div>

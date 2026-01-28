@@ -20,6 +20,9 @@ const toastEl = document.getElementById('toast');
 const uploadBtn = document.getElementById('upload-btn');
 const fileInput = document.getElementById('file-input');
 const bottomEl = document.getElementById('bottom');
+const voiceBar = document.getElementById('voice-bar');
+const closeVoiceBtn = document.getElementById('close-voice-btn');
+const waveformEl = document.getElementById('waveform');
 
 // State
 let ws = null;
@@ -142,6 +145,9 @@ function initSpeech() {
   recognition.onresult = (e) => {
     if (isProcessing) return;
 
+    // Show waveform animation when receiving audio
+    setVoiceActive(true);
+
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
@@ -156,6 +162,7 @@ function initSpeech() {
 
     clearTimeout(timer);
     timer = setTimeout(() => {
+      setVoiceActive(false);
       const text = final.trim();
       if (text && !isProcessing) {
         clearInterim();
@@ -192,7 +199,7 @@ function startVoice() {
   
   mode = 'voice';
   isListening = true;
-  voiceBtn.classList.add('listening');
+  bottomEl?.classList.add('voice-active');
   setStatus('Listening...');
   
   try { recognition.start(); } catch {}
@@ -200,18 +207,28 @@ function startVoice() {
 
 function stopVoice() {
   isListening = false;
-  voiceBtn.classList.remove('listening');
+  bottomEl?.classList.remove('voice-active');
+  voiceBar?.classList.remove('speaking');
   setStatus('');
   try { recognition.stop(); } catch {}
+  mode = 'chat';
+}
+
+// Animate waveform when hearing voice
+function setVoiceActive(active) {
+  if (active) {
+    voiceBar?.classList.add('speaking');
+  } else {
+    voiceBar?.classList.remove('speaking');
+  }
 }
 
 voiceBtn.addEventListener('click', () => {
-  if (isListening) {
-    stopVoice();
-    mode = 'chat';
-  } else {
-    startVoice();
-  }
+  startVoice();
+});
+
+closeVoiceBtn?.addEventListener('click', () => {
+  stopVoice();
 });
 
 // ============================================================================
