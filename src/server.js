@@ -20,9 +20,9 @@ const config = loadConfig();
 
 // Models for different modes
 const MODELS = {
-  voice: 'gemini-2.0-flash',              // Fast conversational
-  chat: 'claude-opus-4-5-20250514',       // Deep thinking (Opus 4.5)
-  notes: 'claude-opus-4-5-20250514'       // Summary (Opus 4.5)
+  voice: 'gemini-2.5-flash-preview-05-20', // Fastest (Gemini 2.5 Flash)
+  chat: 'claude-opus-4-5-20250514',        // Deep thinking (Opus 4.5)
+  notes: 'claude-opus-4-5-20250514'        // Summary (Opus 4.5)
 };
 
 // Gateway connection
