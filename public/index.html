@@ -361,19 +361,29 @@
       50% { height: 20px; }
     }
 
-    /* Close button */
+    /* Close button - separate circle outside voice bar */
     #close-voice-btn {
-      width: 36px;
-      height: 36px;
-      min-width: 36px;
+      display: none;
+      width: 56px;
+      height: 56px;
+      min-width: 56px;
+      min-height: 56px;
+      flex-shrink: 0;
       border-radius: 50%;
       border: none;
-      background: rgba(0, 0, 0, 0.08);
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 4px 20px var(--glass-shadow);
       cursor: pointer;
-      display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.2s;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #bottom.voice-active #close-voice-btn {
+      display: flex;
     }
 
     #close-voice-btn:active {
@@ -381,8 +391,8 @@
     }
 
     #close-voice-btn svg {
-      width: 18px;
-      height: 18px;
+      width: 22px;
+      height: 22px;
       stroke: var(--text-secondary);
       stroke-width: 2;
       fill: none;
@@ -644,13 +654,15 @@
           <div class="wave-bar"></div>
           <div class="wave-bar"></div>
         </div>
-        <button id="close-voice-btn" title="Close">
-          <svg viewBox="0 0 24 24">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
       </div>
+
+      <!-- Close voice button - separate circle -->
+      <button id="close-voice-btn" title="Close">
+        <svg viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
 
       <!-- Notes button - circle -->
       <button id="notes-btn" class="circle-btn" title="Voice Note">

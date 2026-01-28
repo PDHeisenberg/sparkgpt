@@ -99,7 +99,7 @@ function removeThinking() {
 
 let interimEl = null;
 function showInterim(text) {
-  if (emptyEl) emptyEl.style.display = 'none';
+  if (welcomeEl) welcomeEl.style.display = 'none';
   if (!interimEl) {
     interimEl = document.createElement('div');
     interimEl.className = 'msg user interim';
