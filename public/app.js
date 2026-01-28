@@ -22,7 +22,7 @@ const $ = (id) => document.getElementById(id);
 const body = document.body;
 const canvas = $('robot-canvas');
 const statusEl = $('status');
-const transcriptEl = $('transcript');
+const chatEl = $('chat');
 const connectionEl = $('connection');
 const muteBtn = $('mute-btn');
 const errorEl = $('error');
@@ -35,34 +35,98 @@ let ws = null;
 let recognition = null;
 let isListening = false;
 let isMuted = false;
-let isProcessing = false; // True when waiting for response
+let isProcessing = false;
 let audioContext = null;
 let robot = null;
+let currentInterimEl = null;
 
 // ============================================================================
-// EXPRESSIVE ROBOT AVATAR
+// CHAT UI
 // ============================================================================
 
-class ExpressiveRobot {
+function addMessage(text, type = 'user') {
+  const msg = document.createElement('div');
+  msg.className = `message ${type}`;
+  
+  if (type === 'bot') {
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = 'Spark';
+    msg.appendChild(name);
+    
+    const content = document.createElement('div');
+    content.textContent = text;
+    msg.appendChild(content);
+  } else {
+    msg.textContent = text;
+  }
+  
+  chatEl.appendChild(msg);
+  scrollToBottom();
+  return msg;
+}
+
+function showInterim(text) {
+  if (!currentInterimEl) {
+    currentInterimEl = document.createElement('div');
+    currentInterimEl.className = 'message user interim';
+    chatEl.appendChild(currentInterimEl);
+  }
+  currentInterimEl.textContent = text;
+  scrollToBottom();
+}
+
+function clearInterim() {
+  if (currentInterimEl) {
+    currentInterimEl.remove();
+    currentInterimEl = null;
+  }
+}
+
+function showThinking() {
+  const msg = document.createElement('div');
+  msg.className = 'message bot thinking';
+  msg.id = 'thinking-msg';
+  
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = 'Spark';
+  msg.appendChild(name);
+  
+  const content = document.createElement('span');
+  content.textContent = 'Thinking';
+  msg.appendChild(content);
+  
+  chatEl.appendChild(msg);
+  scrollToBottom();
+}
+
+function removeThinking() {
+  const el = $('thinking-msg');
+  if (el) el.remove();
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    chatEl.scrollTop = chatEl.scrollHeight;
+  });
+}
+
+// ============================================================================
+// MINI ROBOT AVATAR
+// ============================================================================
+
+class MiniRobot {
   constructor(canvas) {
     this.canvas = canvas;
     this.scene = new THREE.Scene();
     this.clock = new THREE.Clock();
     
-    // Animation state
-    this.state = 'idle'; // idle, listening, thinking, speaking
-    this.mouthOpenness = 0;
-    this.targetMouthOpenness = 0;
-    this.blinkProgress = 0;
-    this.nextBlink = 2;
-    this.breathPhase = 0;
-    this.headTilt = { x: 0, y: 0 };
-    this.targetHeadTilt = { x: 0, y: 0 };
-    this.eyeScale = 1;
-    this.targetEyeScale = 1;
-    this.pupilOffset = { x: 0, y: 0 };
-    this.glowIntensity = 0.3;
-    this.targetGlowIntensity = 0.3;
+    this.state = 'idle';
+    this.mouthOpen = 0;
+    this.targetMouth = 0;
+    this.blinkTimer = 2;
+    this.isBlinking = false;
     
     this.init();
   }
@@ -71,12 +135,10 @@ class ExpressiveRobot {
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
 
-    // Camera
     this.camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 100);
-    this.camera.position.set(0, 0.2, 5);
+    this.camera.position.set(0, 0.3, 4);
     this.camera.lookAt(0, 0.2, 0);
 
-    // Renderer
     this.renderer = new THREE.WebGLRenderer({ 
       canvas: this.canvas, 
       antialias: true, 
@@ -85,200 +147,97 @@ class ExpressiveRobot {
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    // Lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-    this.scene.add(ambient);
-    
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    keyLight.position.set(2, 4, 3);
-    this.scene.add(keyLight);
-    
-    const rimLight = new THREE.DirectionalLight(0x00d4ff, 0.4);
-    rimLight.position.set(-3, 2, -2);
-    this.scene.add(rimLight);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const light = new THREE.DirectionalLight(0xffffff, 0.8);
+    light.position.set(2, 3, 3);
+    this.scene.add(light);
 
     this.buildRobot();
-    window.addEventListener('resize', () => this.resize());
     this.animate();
   }
 
   buildRobot() {
-    this.robotGroup = new THREE.Group();
+    this.group = new THREE.Group();
 
-    // Materials
-    const bodyMaterial = new THREE.MeshStandardMaterial({
-      color: 0xf0f0f5,
-      roughness: 0.2,
-      metalness: 0.1,
-    });
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f5, roughness: 0.2 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff });
 
-    const darkMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1a1a2e,
-      roughness: 0.3,
-      metalness: 0.2,
-    });
+    // Head
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.6, 24, 24).scale(1.2, 1, 1),
+      bodyMat
+    );
+    head.position.y = 0.5;
+    this.group.add(head);
 
-    this.glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00d4ff,
-      transparent: true,
-      opacity: 0.9,
-    });
+    // Visor
+    const visor = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5, 24, 24).scale(1.1, 0.8, 0.4),
+      darkMat
+    );
+    visor.position.set(0, 0.55, 0.3);
+    this.group.add(visor);
 
-    // Head - smooth capsule shape
-    const headGeom = new THREE.SphereGeometry(0.8, 32, 32);
-    headGeom.scale(1.2, 1, 1);
-    const head = new THREE.Mesh(headGeom, bodyMaterial);
-    head.position.y = 0.8;
-    this.robotGroup.add(head);
-
-    // Face screen (visor)
-    const visorGeom = new THREE.SphereGeometry(0.7, 32, 32);
-    visorGeom.scale(1.15, 0.85, 0.5);
-    const visor = new THREE.Mesh(visorGeom, darkMaterial);
-    visor.position.set(0, 0.85, 0.35);
-    this.robotGroup.add(visor);
-
-    // Eyes container
-    this.eyesGroup = new THREE.Group();
-    this.eyesGroup.position.set(0, 0.9, 0.55);
-    this.robotGroup.add(this.eyesGroup);
-
-    // Left eye
-    this.leftEye = this.createEye(-0.3, 0);
-    this.eyesGroup.add(this.leftEye);
-
-    // Right eye  
-    this.rightEye = this.createEye(0.3, 0);
-    this.eyesGroup.add(this.rightEye);
+    // Eyes
+    this.leftEye = this.createEye(-0.25, 0.6, 0.45);
+    this.rightEye = this.createEye(0.25, 0.6, 0.45);
 
     // Mouth
-    this.mouthGroup = new THREE.Group();
-    this.mouthGroup.position.set(0, 0.55, 0.6);
-    this.robotGroup.add(this.mouthGroup);
-
-    const mouthGeom = new THREE.PlaneGeometry(0.3, 0.08);
-    this.mouth = new THREE.Mesh(mouthGeom, this.glowMaterial);
-    this.mouthGroup.add(this.mouth);
-
-    // Ear accents
-    const earGeom = new THREE.CylinderGeometry(0.1, 0.12, 0.2, 16);
-    const leftEar = new THREE.Mesh(earGeom, bodyMaterial);
-    leftEar.position.set(-1, 0.9, 0);
-    leftEar.rotation.z = 0.2;
-    this.robotGroup.add(leftEar);
-
-    const rightEar = new THREE.Mesh(earGeom, bodyMaterial);
-    rightEar.position.set(1, 0.9, 0);
-    rightEar.rotation.z = -0.2;
-    this.robotGroup.add(rightEar);
-
-    // Antenna
-    const antennaGeom = new THREE.CylinderGeometry(0.03, 0.03, 0.3, 8);
-    const antenna = new THREE.Mesh(antennaGeom, bodyMaterial);
-    antenna.position.set(0, 1.7, 0);
-    this.robotGroup.add(antenna);
-
-    const antennaTipGeom = new THREE.SphereGeometry(0.08, 16, 16);
-    this.antennaTip = new THREE.Mesh(antennaTipGeom, this.glowMaterial);
-    this.antennaTip.position.set(0, 1.9, 0);
-    this.robotGroup.add(this.antennaTip);
+    this.mouth = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.2, 0.05),
+      glowMat
+    );
+    this.mouth.position.set(0, 0.35, 0.5);
+    this.group.add(this.mouth);
 
     // Body
-    const bodyGeom = new THREE.CapsuleGeometry(0.5, 0.6, 16, 24);
-    const bodyMesh = new THREE.Mesh(bodyGeom, bodyMaterial);
-    bodyMesh.position.y = -0.4;
-    this.robotGroup.add(bodyMesh);
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.35, 0.4, 12, 16),
+      bodyMat
+    );
+    body.position.y = -0.35;
+    this.group.add(body);
 
-    // Chest light
-    const chestGeom = new THREE.CircleGeometry(0.12, 24);
-    this.chestLight = new THREE.Mesh(chestGeom, this.glowMaterial);
-    this.chestLight.position.set(0, -0.25, 0.51);
-    this.robotGroup.add(this.chestLight);
-
-    // Shadow
-    const shadowGeom = new THREE.CircleGeometry(0.7, 32);
-    const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: true,
-      opacity: 0.15,
-    });
-    this.shadow = new THREE.Mesh(shadowGeom, shadowMat);
-    this.shadow.rotation.x = -Math.PI / 2;
-    this.shadow.position.y = -1.1;
-    this.robotGroup.add(this.shadow);
-
-    this.scene.add(this.robotGroup);
+    this.scene.add(this.group);
   }
 
-  createEye(x, y) {
-    const eyeGroup = new THREE.Group();
-    eyeGroup.position.set(x, y, 0);
+  createEye(x, y, z) {
+    const group = new THREE.Group();
+    group.position.set(x, y, z);
 
-    // Eye glow (outer)
-    const glowGeom = new THREE.CircleGeometry(0.18, 24);
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: 0x00d4ff,
-      transparent: true,
-      opacity: 0.3,
-    });
-    const glow = new THREE.Mesh(glowGeom, glowMat);
-    glow.position.z = -0.01;
-    eyeGroup.add(glow);
-    eyeGroup.userData.glow = glow;
+    const glow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.12, 16),
+      new THREE.MeshBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.4 })
+    );
+    group.add(glow);
+    group.userData.glow = glow;
 
-    // Eye main
-    const eyeGeom = new THREE.CircleGeometry(0.14, 24);
-    const eye = new THREE.Mesh(eyeGeom, this.glowMaterial.clone());
-    eyeGroup.add(eye);
-    eyeGroup.userData.main = eye;
+    const eye = new THREE.Mesh(
+      new THREE.CircleGeometry(0.09, 16),
+      new THREE.MeshBasicMaterial({ color: 0x00d4ff })
+    );
+    eye.position.z = 0.01;
+    group.add(eye);
 
-    // Pupil (darker center)
-    const pupilGeom = new THREE.CircleGeometry(0.05, 16);
-    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x006688 });
-    const pupil = new THREE.Mesh(pupilGeom, pupilMat);
-    pupil.position.z = 0.01;
-    eyeGroup.add(pupil);
-    eyeGroup.userData.pupil = pupil;
+    const lid = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.3, 0.15),
+      new THREE.MeshBasicMaterial({ color: 0x1a1a2e })
+    );
+    lid.position.set(0, 0.15, 0.02);
+    group.add(lid);
+    group.userData.lid = lid;
 
-    // Eyelid (for blinking)
-    const lidGeom = new THREE.PlaneGeometry(0.4, 0.2);
-    const lidMat = new THREE.MeshBasicMaterial({ color: 0x1a1a2e });
-    const lid = new THREE.Mesh(lidGeom, lidMat);
-    lid.position.set(0, 0.2, 0.02);
-    eyeGroup.add(lid);
-    eyeGroup.userData.lid = lid;
-
-    return eyeGroup;
+    this.group.add(group);
+    return group;
   }
 
   setState(state) {
     this.state = state;
-    
-    switch (state) {
-      case 'listening':
-        this.targetEyeScale = 1.1;
-        this.targetGlowIntensity = 0.5;
-        this.targetHeadTilt = { x: 0.05, y: 0 };
-        break;
-      case 'thinking':
-        this.targetEyeScale = 0.9;
-        this.targetGlowIntensity = 0.7;
-        this.targetHeadTilt = { x: -0.1, y: 0.1 };
-        break;
-      case 'speaking':
-        this.targetEyeScale = 1.05;
-        this.targetGlowIntensity = 0.6;
-        this.targetHeadTilt = { x: 0, y: 0 };
-        break;
-      default: // idle
-        this.targetEyeScale = 1;
-        this.targetGlowIntensity = 0.3;
-        this.targetHeadTilt = { x: 0, y: 0 };
-    }
   }
 
-  setMouthOpen(value) {
-    this.targetMouthOpenness = Math.max(0, Math.min(1, value));
+  setMouthOpen(val) {
+    this.targetMouth = Math.max(0, Math.min(1, val));
   }
 
   animate() {
@@ -287,93 +246,45 @@ class ExpressiveRobot {
     const delta = this.clock.getDelta();
     const time = this.clock.getElapsedTime();
 
-    // Smooth transitions
-    const lerp = (a, b, t) => a + (b - a) * Math.min(1, t);
-    const smoothing = delta * 8;
+    // Breathing
+    this.group.position.y = Math.sin(time * 1.5) * 0.02;
+    this.group.rotation.y = Math.sin(time * 0.5) * 0.05;
 
-    this.mouthOpenness = lerp(this.mouthOpenness, this.targetMouthOpenness, smoothing);
-    this.eyeScale = lerp(this.eyeScale, this.targetEyeScale, smoothing);
-    this.glowIntensity = lerp(this.glowIntensity, this.targetGlowIntensity, smoothing);
-    this.headTilt.x = lerp(this.headTilt.x, this.targetHeadTilt.x, smoothing * 0.5);
-    this.headTilt.y = lerp(this.headTilt.y, this.targetHeadTilt.y, smoothing * 0.5);
-
-    // Breathing animation
-    this.breathPhase += delta * 1.2;
-    const breathOffset = Math.sin(this.breathPhase) * 0.02;
-    this.robotGroup.position.y = breathOffset;
-    this.shadow.scale.setScalar(1 - breathOffset * 2);
-
-    // Gentle sway
-    this.robotGroup.rotation.z = Math.sin(time * 0.5) * 0.02;
-    
-    // Head tilt
-    this.robotGroup.rotation.x = this.headTilt.x;
-    this.robotGroup.rotation.y = this.headTilt.y + Math.sin(time * 0.3) * 0.03;
+    // Mouth
+    this.mouthOpen += (this.targetMouth - this.mouthOpen) * 0.3;
+    this.mouth.scale.y = 1 + this.mouthOpen * 3;
 
     // Blinking
-    this.nextBlink -= delta;
-    if (this.nextBlink <= 0) {
-      this.blinkProgress = 1;
-      this.nextBlink = 2 + Math.random() * 4;
-    }
-    if (this.blinkProgress > 0) {
-      this.blinkProgress = Math.max(0, this.blinkProgress - delta * 8);
+    this.blinkTimer -= delta;
+    if (this.blinkTimer <= 0 && !this.isBlinking) {
+      this.isBlinking = true;
+      this.blinkTimer = 0.15;
+    } else if (this.isBlinking && this.blinkTimer <= 0) {
+      this.isBlinking = false;
+      this.blinkTimer = 2 + Math.random() * 3;
     }
 
-    // Update eyes
-    [this.leftEye, this.rightEye].forEach((eye, i) => {
-      // Scale
-      eye.scale.setScalar(this.eyeScale);
-      
-      // Blink
-      const lid = eye.userData.lid;
-      const blinkY = 0.2 - this.blinkProgress * 0.35;
-      lid.position.y = blinkY;
-
-      // Glow intensity
-      eye.userData.glow.material.opacity = this.glowIntensity * 0.5;
-      
-      // Slight pupil movement (looking around)
-      const pupil = eye.userData.pupil;
-      pupil.position.x = Math.sin(time * 0.7 + i) * 0.02;
-      pupil.position.y = Math.cos(time * 0.5) * 0.015;
+    const lidY = this.isBlinking ? 0.02 : 0.15;
+    [this.leftEye, this.rightEye].forEach(e => {
+      e.userData.lid.position.y = lidY;
+      // Glow based on state
+      const intensity = this.state === 'speaking' ? 0.6 : 
+                       this.state === 'thinking' ? 0.3 + Math.sin(time * 4) * 0.2 : 0.4;
+      e.userData.glow.material.opacity = intensity;
     });
 
-    // Mouth animation
-    const mouthScale = 1 + this.mouthOpenness * 2;
-    this.mouth.scale.y = mouthScale;
-    this.mouth.material.opacity = 0.7 + this.mouthOpenness * 0.3;
-
-    // Pulsing glow for thinking state
-    if (this.state === 'thinking') {
-      const pulse = (Math.sin(time * 4) + 1) * 0.5;
-      this.antennaTip.material.opacity = 0.5 + pulse * 0.5;
-      this.chestLight.material.opacity = 0.5 + pulse * 0.5;
-    } else {
-      this.antennaTip.material.opacity = this.glowIntensity + 0.2;
-      this.chestLight.material.opacity = this.glowIntensity + 0.2;
-    }
-
     this.renderer.render(this.scene, this.camera);
-  }
-
-  resize() {
-    const w = this.canvas.clientWidth;
-    const h = this.canvas.clientHeight;
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h);
   }
 }
 
 // ============================================================================
-// SEAMLESS SPEECH RECOGNITION (no start/stop sounds)
+// SEAMLESS SPEECH RECOGNITION
 // ============================================================================
 
 function initSpeech() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    showError('Speech recognition not supported');
+    showError('Speech not supported');
     return false;
   }
 
@@ -386,7 +297,6 @@ function initSpeech() {
   let silenceTimer = null;
 
   recognition.onresult = (event) => {
-    // Ignore results while processing (bot is responding)
     if (isProcessing) return;
 
     let interim = '';
@@ -400,17 +310,15 @@ function initSpeech() {
       }
     }
 
-    // Show interim
     if (interim) {
-      transcriptEl.textContent = interim;
-      transcriptEl.className = 'user';
+      showInterim(interim);
       robot?.setState('listening');
     }
 
-    // Reset silence timer
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
       if (finalTranscript.trim() && !isProcessing) {
+        clearInterim();
         sendMessage(finalTranscript.trim());
         finalTranscript = '';
       }
@@ -423,14 +331,9 @@ function initSpeech() {
     }
   };
 
-  // Auto-restart on end (keeps running continuously)
   recognition.onend = () => {
     if (!isMuted) {
-      try {
-        recognition.start();
-      } catch (e) {
-        // Already started
-      }
+      try { recognition.start(); } catch (e) {}
     }
   };
 
@@ -444,10 +347,10 @@ function startListening() {
     recognition.start();
     isListening = true;
     setStatus('listening', 'Listening...');
+    muteBtn.classList.add('listening');
+    muteBtn.classList.remove('active');
     robot?.setState('listening');
-  } catch (e) {
-    // Already started, that's fine
-  }
+  } catch (e) {}
 }
 
 // ============================================================================
@@ -475,10 +378,9 @@ function connect() {
 
   ws.onmessage = (event) => {
     try {
-      const data = JSON.parse(event.data);
-      handleMessage(data);
+      handleMessage(JSON.parse(event.data));
     } catch (e) {
-      console.error('Message parse error:', e);
+      console.error('Parse error:', e);
     }
   };
 }
@@ -486,22 +388,19 @@ function connect() {
 function sendMessage(text) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   
-  isProcessing = true; // Stop processing speech input
-  transcriptEl.textContent = text;
-  transcriptEl.className = 'user';
+  isProcessing = true;
+  addMessage(text, 'user');
+  showThinking();
   setStatus('thinking', 'Thinking...');
   robot?.setState('thinking');
   
   ws.send(JSON.stringify({ type: 'transcript', text }));
 }
 
-// Audio chunk accumulator
-let audioChunks = [];
-
 function handleMessage(data) {
   switch (data.type) {
     case 'ready':
-      setStatus('listening', 'Ready');
+      setStatus('listening', 'Listening...');
       break;
       
     case 'thinking':
@@ -510,38 +409,25 @@ function handleMessage(data) {
       break;
       
     case 'text':
-      transcriptEl.textContent = data.content || '';
-      transcriptEl.className = 'assistant';
+      removeThinking();
+      addMessage(data.content, 'bot');
       break;
       
-    case 'audio_start':
-      audioChunks = [];
+    case 'audio':
+      playAudio(data.data);
       setStatus('speaking', '');
       robot?.setState('speaking');
       break;
       
-    case 'audio_chunk':
-      audioChunks.push(data.data);
-      if (data.final) {
-        const fullAudio = audioChunks.join('');
-        playAudio(fullAudio);
-      }
-      break;
-      
-    case 'audio_end':
-      // Resume listening seamlessly
+    case 'done':
       isProcessing = false;
       setStatus('listening', 'Listening...');
-      robot?.setState('listening');
-      break;
-      
-    case 'tts_error':
-      isProcessing = false;
       robot?.setState('idle');
       break;
       
     case 'error':
-      showError(data.message || 'Something went wrong');
+      removeThinking();
+      showError(data.message || 'Error');
       isProcessing = false;
       setStatus('listening', 'Listening...');
       robot?.setState('idle');
@@ -550,7 +436,7 @@ function handleMessage(data) {
 }
 
 // ============================================================================
-// AUDIO PLAYBACK WITH LIP SYNC
+// AUDIO PLAYBACK
 // ============================================================================
 
 let currentSource = null;
@@ -561,15 +447,15 @@ async function playAudio(base64) {
   }
 
   try {
+    // Decode base64
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
 
-    const buffer = await audioContext.decodeAudioData(bytes.buffer);
+    const buffer = await audioContext.decodeAudioData(bytes.buffer.slice(0));
     
-    // Stop any current playback
     if (currentSource) {
       try { currentSource.stop(); } catch (e) {}
     }
@@ -582,36 +468,34 @@ async function playAudio(base64) {
     currentSource.connect(analyser);
     analyser.connect(audioContext.destination);
     
-    // Lip sync animation
+    // Lip sync
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    let animating = true;
+    let active = true;
     
     const updateMouth = () => {
-      if (!animating) return;
+      if (!active) return;
       analyser.getByteFrequencyData(dataArray);
-      // Focus on voice frequency range (100-400 Hz)
-      const voiceRange = dataArray.slice(2, 12);
-      const avg = voiceRange.reduce((a, b) => a + b, 0) / voiceRange.length;
-      robot?.setMouthOpen(avg / 200);
+      const avg = dataArray.slice(2, 12).reduce((a, b) => a + b, 0) / 10;
+      robot?.setMouthOpen(avg / 180);
       requestAnimationFrame(updateMouth);
     };
     updateMouth();
     
     currentSource.onended = () => {
-      animating = false;
+      active = false;
       robot?.setMouthOpen(0);
       currentSource = null;
     };
     
     currentSource.start(0);
   } catch (e) {
-    console.error('Audio playback error:', e);
+    console.error('Audio error:', e);
     robot?.setMouthOpen(0);
   }
 }
 
 // ============================================================================
-// UI HELPERS
+// UI
 // ============================================================================
 
 function setStatus(state, text) {
@@ -629,21 +513,19 @@ function showError(msg) {
 // INIT
 // ============================================================================
 
-async function init() {
-  // Create expressive robot
-  robot = new ExpressiveRobot(canvas);
+function init() {
+  robot = new MiniRobot(canvas);
 
-  // Init speech (runs continuously, no beeps)
   if (!initSpeech()) {
-    showError('Speech recognition not available');
+    showError('Speech not supported');
   }
 
-  // Mute button
   muteBtn.addEventListener('click', () => {
     isMuted = !isMuted;
-    muteBtn.classList.toggle('active', isMuted);
     
     if (isMuted) {
+      muteBtn.classList.remove('listening');
+      muteBtn.classList.add('active');
       try { recognition?.stop(); } catch (e) {}
       setStatus('', 'Muted');
       robot?.setState('idle');
@@ -652,11 +534,9 @@ async function init() {
     }
   });
 
-  // Connect
   connect();
 }
 
-// Auto-start
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {

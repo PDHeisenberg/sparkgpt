@@ -9,37 +9,43 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
     :root {
-      --bg: #0a0a0f;
-      --surface: #16161f;
+      --bg: #0d0d12;
+      --surface: #1a1a24;
+      --bubble-user: #2a2a3a;
+      --bubble-bot: #1e3a5f;
       --cyan: #00d4ff;
-      --cyan-glow: rgba(0, 212, 255, 0.3);
       --text: #ffffff;
-      --text-dim: #666;
-      --success: #00cc88;
-      --warning: #ffaa00;
+      --text-dim: #888;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
     }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
       background: var(--bg);
-      min-height: 100vh;
-      min-height: 100dvh;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header with robot */
+    #header {
+      flex-shrink: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      color: var(--text);
-      overflow: hidden;
-      padding: 20px;
-      padding-bottom: env(safe-area-inset-bottom, 20px);
+      padding: 20px 20px 10px;
+      background: linear-gradient(180deg, var(--bg) 0%, transparent 100%);
+      position: relative;
+      z-index: 10;
     }
 
-    /* Robot container */
     #robot-wrap {
-      position: relative;
-      width: 100%;
-      max-width: 300px;
-      aspect-ratio: 1;
+      width: 120px;
+      height: 120px;
     }
 
     #robot-canvas {
@@ -47,49 +53,97 @@
       height: 100%;
     }
 
-    /* Status text - subtle */
     #status {
-      margin-top: 24px;
-      font-size: 14px;
-      font-weight: 400;
-      text-align: center;
-      min-height: 20px;
+      margin-top: 8px;
+      font-size: 13px;
       color: var(--text-dim);
-      opacity: 0.6;
-      transition: all 0.3s;
+      opacity: 0.7;
     }
 
-    #status:empty { opacity: 0; }
-    #status.listening { color: var(--success); opacity: 0.8; }
-    #status.thinking { color: var(--warning); opacity: 1; }
+    #status.listening { color: #00cc88; }
+    #status.thinking { color: #ffaa00; }
     #status.speaking { color: var(--cyan); opacity: 0; }
 
-    /* Transcript - simple */
-    #transcript {
-      margin-top: 24px;
-      font-size: 18px;
-      line-height: 1.6;
-      text-align: center;
-      max-width: 500px;
-      color: var(--text-dim);
-      min-height: 60px;
+    /* Chat area */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 10px 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
     }
 
-    #transcript.user { color: var(--text); }
-    #transcript.assistant { color: var(--cyan); }
+    .message {
+      max-width: 85%;
+      padding: 14px 18px;
+      border-radius: 20px;
+      font-size: 17px;
+      line-height: 1.5;
+      animation: fadeIn 0.3s ease;
+      word-wrap: break-word;
+    }
 
-    /* Minimal controls */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: var(--bubble-user);
+      border-bottom-right-radius: 6px;
+    }
+
+    .message.bot {
+      align-self: flex-start;
+      background: var(--bubble-bot);
+      border-bottom-left-radius: 6px;
+    }
+
+    .message.bot .name {
+      font-size: 12px;
+      color: var(--cyan);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .message.interim {
+      opacity: 0.5;
+      font-style: italic;
+    }
+
+    .message.thinking {
+      color: var(--text-dim);
+    }
+
+    .message.thinking::after {
+      content: '';
+      animation: dots 1.5s infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+
+    /* Controls */
     #controls {
-      position: fixed;
-      bottom: 40px;
-      bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+      flex-shrink: 0;
+      padding: 16px;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
       display: flex;
+      justify-content: center;
       gap: 16px;
+      background: linear-gradient(0deg, var(--bg) 60%, transparent 100%);
     }
 
     .icon-btn {
-      width: 56px;
-      height: 56px;
+      width: 60px;
+      height: 60px;
       border-radius: 50%;
       border: none;
       background: var(--surface);
@@ -100,11 +154,6 @@
       transition: all 0.2s;
     }
 
-    .icon-btn:hover {
-      background: #222;
-      transform: scale(1.05);
-    }
-
     .icon-btn:active {
       transform: scale(0.95);
     }
@@ -113,39 +162,51 @@
       background: #ff4444;
     }
 
+    .icon-btn.listening {
+      background: #00cc88;
+      box-shadow: 0 0 20px rgba(0, 204, 136, 0.4);
+    }
+
     .icon-btn svg {
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
       stroke: var(--text);
       stroke-width: 2;
       fill: none;
     }
 
-    .icon-btn.active svg {
-      stroke: white;
-    }
-
-    /* Connection indicator */
+    /* Connection dot */
     #connection {
       position: fixed;
-      top: 20px;
-      right: 20px;
-      width: 12px;
-      height: 12px;
+      top: 16px;
+      right: 16px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
       background: var(--text-dim);
-      transition: all 0.3s;
+      z-index: 100;
     }
 
-    #connection.connected {
-      background: var(--success);
-      box-shadow: 0 0 12px var(--success);
-    }
+    #connection.connected { background: #00cc88; }
+    #connection.error { background: #ff4444; }
 
-    #connection.error {
+    /* Error toast */
+    #error {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
       background: #ff4444;
-      box-shadow: 0 0 12px #ff4444;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 100;
     }
+
+    #error.show { opacity: 1; }
 
     /* Loading state */
     .loading #robot-wrap {
@@ -157,35 +218,35 @@
       50% { opacity: 1; }
     }
 
-    /* Error toast */
-    #error {
-      position: fixed;
-      bottom: 120px;
-      background: #ff4444;
-      color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-size: 14px;
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
+    /* Scrollbar */
+    #chat::-webkit-scrollbar {
+      width: 4px;
     }
 
-    #error.show { opacity: 1; }
+    #chat::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #chat::-webkit-scrollbar-thumb {
+      background: var(--surface);
+      border-radius: 2px;
+    }
   </style>
 </head>
 <body class="loading">
   <div id="connection"></div>
   
-  <div id="robot-wrap">
-    <canvas id="robot-canvas"></canvas>
+  <div id="header">
+    <div id="robot-wrap">
+      <canvas id="robot-canvas"></canvas>
+    </div>
+    <div id="status">Connecting...</div>
   </div>
 
-  <div id="status">Connecting...</div>
-  <div id="transcript"></div>
+  <div id="chat"></div>
 
   <div id="controls">
-    <button id="mute-btn" class="icon-btn" title="Mute">
+    <button id="mute-btn" class="icon-btn listening" title="Listening">
       <svg viewBox="0 0 24 24">
         <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
         <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
@@ -205,6 +266,6 @@
   }
   </script>
 
-  <script type="module" src="app.js?v=3"></script>
+  <script type="module" src="app.js?v=4"></script>
 </body>
 </html>

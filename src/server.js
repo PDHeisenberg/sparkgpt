@@ -170,31 +170,20 @@ async function handleTranscript(ws, session, text, isFinal = true) {
   // Send text response
   ws.send(JSON.stringify({ type: 'text', content: response }));
   
-  // Generate TTS and stream
+  // Generate TTS
   try {
-    ws.send(JSON.stringify({ type: 'audio_start' }));
-    
     const audioBuffer = await tts.synthesize(response);
     
-    // Send audio in chunks for streaming playback
-    const chunkSize = 16 * 1024; // 16KB chunks
-    for (let i = 0; i < audioBuffer.length; i += chunkSize) {
-      const chunk = audioBuffer.slice(i, i + chunkSize);
-      ws.send(JSON.stringify({ 
-        type: 'audio_chunk',
-        data: chunk.toString('base64'),
-        index: Math.floor(i / chunkSize),
-        final: i + chunkSize >= audioBuffer.length
-      }));
-    }
+    // Send complete audio (simpler, more reliable)
+    ws.send(JSON.stringify({ 
+      type: 'audio',
+      data: audioBuffer.toString('base64')
+    }));
     
-    ws.send(JSON.stringify({ type: 'audio_end' }));
+    ws.send(JSON.stringify({ type: 'done' }));
   } catch (ttsError) {
     console.error(`[${ws.sessionId}] TTS Error:`, ttsError.message);
-    ws.send(JSON.stringify({ 
-      type: 'tts_error', 
-      message: 'Voice synthesis failed, text-only response'
-    }));
+    ws.send(JSON.stringify({ type: 'done' }));
   }
 }
 
