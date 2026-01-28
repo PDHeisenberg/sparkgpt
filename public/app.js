@@ -1,11 +1,15 @@
 /**
- * Spark Voice - Conversational AI (Voice + Text)
+ * Spark - Three Mode AI Assistant
+ * 
+ * 1. Voice Mode - Fast conversational (Haiku)
+ * 2. Chat Mode - Deep thinking (Opus), files, links
+ * 3. Notes Mode - Record, transcribe, summarize
  */
 
 const CONFIG = {
   wsUrl: `wss://${location.host}`,
   reconnectDelay: 2000,
-  silenceThreshold: 1500, // Wait longer for complete sentences
+  silenceThreshold: 1500,
 };
 
 // ============================================================================
@@ -15,11 +19,31 @@ const CONFIG = {
 const $ = (id) => document.getElementById(id);
 const chatEl = $('chat');
 const emptyEl = $('empty');
+const modeHint = $('mode-hint');
 const statusDot = $('status-dot');
 const statusText = $('status-text');
+
+// Mode buttons
+const modeBtns = document.querySelectorAll('.mode-btn');
+
+// Voice mode
+const voiceInput = $('voice-input');
+const voiceBtn = $('voice-btn');
+const voiceStatus = $('voice-status');
+
+// Chat mode
+const chatInput = $('chat-input');
 const textInput = $('text-input');
 const sendBtn = $('send-btn');
-const micBtn = $('mic-btn');
+const fileBtn = $('file-btn');
+const fileInput = $('file-input');
+
+// Notes mode
+const notesInput = $('notes-input');
+const notesBtn = $('notes-btn');
+const notesStatus = $('notes-status');
+const recordingTime = $('recording-time');
+
 const errorEl = $('error');
 
 // ============================================================================
@@ -27,12 +51,57 @@ const errorEl = $('error');
 // ============================================================================
 
 let ws = null;
+let currentMode = 'chat';
 let recognition = null;
 let isListening = false;
 let isProcessing = false;
 let audioContext = null;
-let currentInterimEl = null;
 let currentSource = null;
+let currentInterimEl = null;
+
+// Notes recording
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingStartTime = null;
+let recordingTimer = null;
+
+// ============================================================================
+// MODE SWITCHING
+// ============================================================================
+
+function setMode(mode) {
+  currentMode = mode;
+  
+  // Update tabs
+  modeBtns.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  
+  // Update inputs
+  voiceInput.classList.toggle('active', mode === 'voice');
+  chatInput.classList.toggle('active', mode === 'chat');
+  notesInput.classList.toggle('active', mode === 'notes');
+  
+  // Update hint
+  const hints = {
+    voice: 'Tap the mic and start talking',
+    chat: 'Type a message or attach a file',
+    notes: 'Record a voice memo for summary'
+  };
+  if (modeHint) modeHint.textContent = hints[mode];
+  
+  // Stop any ongoing actions
+  if (mode !== 'voice' && isListening) {
+    stopListening();
+  }
+  if (mode !== 'notes' && mediaRecorder?.state === 'recording') {
+    stopRecording();
+  }
+}
+
+modeBtns.forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
 
 // ============================================================================
 // CHAT UI
@@ -50,6 +119,15 @@ function addMessage(text, type = 'user') {
   chatEl.appendChild(msg);
   scrollToBottom();
   return msg;
+}
+
+function addSystemMessage(text) {
+  hideEmpty();
+  const msg = document.createElement('div');
+  msg.className = 'message system';
+  msg.textContent = text;
+  chatEl.appendChild(msg);
+  scrollToBottom();
 }
 
 function showInterim(text) {
@@ -92,83 +170,63 @@ function scrollToBottom() {
 }
 
 // ============================================================================
-// SPEECH RECOGNITION (Improved reliability)
+// VOICE MODE - Fast Conversational
 // ============================================================================
 
 function initSpeech() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    console.warn('Speech not supported');
-    micBtn.style.display = 'none';
-    return false;
-  }
+  if (!SpeechRecognition) return false;
 
   recognition = new SpeechRecognition();
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.lang = 'en-US';
-  recognition.maxAlternatives = 1;
 
   let finalTranscript = '';
   let silenceTimer = null;
-  let lastResultTime = Date.now();
 
   recognition.onresult = (event) => {
     if (isProcessing) return;
     
-    lastResultTime = Date.now();
     let interim = '';
     
-    // Collect all results
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const result = event.results[i];
-      const transcript = result[0].transcript;
-      
       if (result.isFinal) {
-        finalTranscript += transcript + ' ';
+        finalTranscript += result[0].transcript + ' ';
         clearInterim();
       } else {
-        interim += transcript;
+        interim += result[0].transcript;
       }
     }
 
-    // Show what we're hearing
     if (interim) {
       showInterim(finalTranscript + interim);
     } else if (finalTranscript) {
       showInterim(finalTranscript.trim());
     }
 
-    // Reset silence timer - wait for pause in speech
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
       const text = finalTranscript.trim();
       if (text && !isProcessing) {
         clearInterim();
-        sendMessage(text);
+        sendMessage(text, 'voice');
         finalTranscript = '';
       }
     }, CONFIG.silenceThreshold);
   };
 
   recognition.onerror = (e) => {
-    if (e.error === 'no-speech') {
-      // Normal, just continue
-    } else if (e.error === 'aborted') {
-      // User stopped
-    } else {
-      console.error('Speech error:', e.error);
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
       showError(`Mic error: ${e.error}`);
     }
   };
 
   recognition.onend = () => {
-    // Auto-restart if we're supposed to be listening
     if (isListening && !isProcessing) {
       setTimeout(() => {
-        try { 
-          recognition.start(); 
-        } catch (e) {}
+        try { recognition.start(); } catch (e) {}
       }, 100);
     }
   };
@@ -178,87 +236,214 @@ function initSpeech() {
 
 function startListening() {
   if (!recognition) return;
-  
   try {
     recognition.start();
     isListening = true;
-    micBtn.classList.add('listening');
-    setStatus('listening', 'Listening...');
-  } catch (e) {
-    // Already started
-  }
+    voiceBtn.classList.add('listening');
+    voiceStatus.textContent = 'Listening...';
+    setStatus('listening', 'Listening');
+  } catch (e) {}
 }
 
 function stopListening() {
   if (!recognition) return;
-  
   isListening = false;
-  micBtn.classList.remove('listening');
-  
-  try { 
-    recognition.stop(); 
-  } catch (e) {}
-  
-  if (!isProcessing) {
-    setStatus('connected', 'Ready');
-  }
+  voiceBtn.classList.remove('listening');
+  voiceStatus.textContent = 'Tap to talk';
+  try { recognition.stop(); } catch (e) {}
+  if (!isProcessing) setStatus('connected', 'Ready');
 }
 
-function toggleMic() {
+voiceBtn?.addEventListener('click', () => {
   if (isListening) {
     stopListening();
   } else {
-    // Stop any playing audio
-    if (currentSource) {
-      try { currentSource.stop(); } catch (e) {}
-    }
+    if (currentSource) try { currentSource.stop(); } catch (e) {}
     startListening();
   }
-}
+});
 
 // ============================================================================
-// TEXT INPUT
+// CHAT MODE - Deep Thinking with Files
 // ============================================================================
 
 function setupTextInput() {
-  // Auto-resize textarea
   textInput.addEventListener('input', () => {
     textInput.style.height = 'auto';
     textInput.style.height = Math.min(textInput.scrollHeight, 120) + 'px';
     sendBtn.disabled = !textInput.value.trim();
   });
 
-  // Send on Enter (Shift+Enter for newline)
   textInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (textInput.value.trim()) {
-        handleTextSubmit();
-      }
+      handleTextSubmit();
     }
   });
 
-  // Send button
   sendBtn.addEventListener('click', handleTextSubmit);
+  
+  // File handling
+  fileBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', handleFiles);
 }
 
 function handleTextSubmit() {
   const text = textInput.value.trim();
   if (!text || isProcessing) return;
 
-  // Stop listening while we process
-  if (isListening) {
-    stopListening();
-  }
-
-  // Clear input
   textInput.value = '';
   textInput.style.height = 'auto';
   sendBtn.disabled = true;
 
-  // Send
-  sendMessage(text);
+  sendMessage(text, 'chat');
 }
+
+async function handleFiles(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+
+  for (const file of files) {
+    addSystemMessage(`📎 Attached: ${file.name}`);
+    
+    // Read file content
+    try {
+      let content;
+      if (file.type.startsWith('image/')) {
+        content = await readFileAsDataURL(file);
+        sendMessage(`[Image: ${file.name}]\n${content}`, 'chat');
+      } else {
+        content = await readFileAsText(file);
+        sendMessage(`[File: ${file.name}]\n\`\`\`\n${content}\n\`\`\``, 'chat');
+      }
+    } catch (err) {
+      showError(`Failed to read ${file.name}`);
+    }
+  }
+  
+  fileInput.value = '';
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ============================================================================
+// NOTES MODE - Record and Summarize
+// ============================================================================
+
+async function initRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+    
+    mediaRecorder.onstop = handleRecordingComplete;
+    
+    return true;
+  } catch (e) {
+    console.error('Mic access denied:', e);
+    return false;
+  }
+}
+
+function startRecording() {
+  if (!mediaRecorder) {
+    initRecording().then(ok => {
+      if (ok) startRecording();
+      else showError('Microphone access denied');
+    });
+    return;
+  }
+  
+  audioChunks = [];
+  mediaRecorder.start(1000); // Collect in 1s chunks
+  recordingStartTime = Date.now();
+  
+  notesBtn.classList.add('recording');
+  notesStatus.textContent = 'Recording... Tap to stop';
+  setStatus('recording', 'Recording');
+  
+  recordingTimer = setInterval(updateRecordingTime, 1000);
+  updateRecordingTime();
+}
+
+function stopRecording() {
+  if (mediaRecorder?.state !== 'recording') return;
+  
+  mediaRecorder.stop();
+  clearInterval(recordingTimer);
+  
+  notesBtn.classList.remove('recording');
+  notesStatus.textContent = 'Processing...';
+}
+
+function updateRecordingTime() {
+  const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  recordingTime.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+async function handleRecordingComplete() {
+  const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+  const duration = Math.floor((Date.now() - recordingStartTime) / 1000);
+  
+  addSystemMessage(`🎙️ Voice note recorded (${Math.floor(duration/60)}:${(duration%60).toString().padStart(2,'0')})`);
+  
+  // Convert to base64 and send for transcription
+  const reader = new FileReader();
+  reader.onload = () => {
+    const base64 = reader.result.split(',')[1];
+    sendVoiceNote(base64, duration);
+  };
+  reader.readAsDataURL(audioBlob);
+  
+  notesStatus.textContent = 'Tap to start recording';
+  recordingTime.textContent = '0:00';
+  setStatus('thinking', 'Transcribing...');
+}
+
+function sendVoiceNote(audioBase64, duration) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showError('Not connected');
+    return;
+  }
+  
+  isProcessing = true;
+  showThinking();
+  
+  ws.send(JSON.stringify({
+    type: 'voice_note',
+    audio: audioBase64,
+    duration: duration
+  }));
+}
+
+notesBtn?.addEventListener('click', () => {
+  if (mediaRecorder?.state === 'recording') {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+});
 
 // ============================================================================
 // WEBSOCKET
@@ -268,41 +453,36 @@ function connect() {
   setStatus('', 'Connecting...');
   ws = new WebSocket(CONFIG.wsUrl);
 
-  ws.onopen = () => {
-    setStatus('connected', 'Ready');
-  };
-
+  ws.onopen = () => setStatus('connected', 'Ready');
   ws.onclose = () => {
     setStatus('error', 'Disconnected');
     setTimeout(connect, CONFIG.reconnectDelay);
   };
-
-  ws.onerror = () => {
-    setStatus('error', 'Connection error');
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      handleMessage(JSON.parse(event.data));
-    } catch (e) {
-      console.error('Parse error:', e);
-    }
+  ws.onerror = () => setStatus('error', 'Error');
+  ws.onmessage = (e) => {
+    try { handleMessage(JSON.parse(e.data)); } 
+    catch (err) { console.error('Parse error:', err); }
   };
 }
 
-function sendMessage(text) {
+function sendMessage(text, mode = 'chat') {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     showError('Not connected');
     return;
   }
   
   isProcessing = true;
-  clearInterim();
+  if (isListening) stopListening();
+  
   addMessage(text, 'user');
   showThinking();
   setStatus('thinking', 'Thinking...');
   
-  ws.send(JSON.stringify({ type: 'transcript', text }));
+  ws.send(JSON.stringify({ 
+    type: 'transcript', 
+    text,
+    mode // 'voice' = fast, 'chat' = deep thinking
+  }));
 }
 
 function handleMessage(data) {
@@ -322,21 +502,26 @@ function handleMessage(data) {
       
     case 'audio':
       playAudio(data.data);
-      setStatus('speaking', 'Speaking...');
+      setStatus('speaking', 'Speaking');
+      break;
+      
+    case 'transcription':
+      // Voice note transcribed
+      addMessage(`📝 Transcription:\n${data.text}`, 'bot');
       break;
       
     case 'done':
       isProcessing = false;
       setStatus('connected', 'Ready');
-      // Resume listening if mic was on
-      if (micBtn.classList.contains('listening')) {
-        startListening();
+      // Resume voice mode if active
+      if (currentMode === 'voice') {
+        setTimeout(startListening, 500);
       }
       break;
       
     case 'error':
       removeThinking();
-      addMessage(data.message || 'Something went wrong', 'bot');
+      addMessage(data.message || 'Error occurred', 'bot');
       isProcessing = false;
       setStatus('connected', 'Ready');
       break;
@@ -355,24 +540,16 @@ async function playAudio(base64) {
   try {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
     const buffer = await audioContext.decodeAudioData(bytes.buffer.slice(0));
     
-    if (currentSource) {
-      try { currentSource.stop(); } catch (e) {}
-    }
+    if (currentSource) try { currentSource.stop(); } catch (e) {}
 
     currentSource = audioContext.createBufferSource();
     currentSource.buffer = buffer;
     currentSource.connect(audioContext.destination);
-    
-    currentSource.onended = () => {
-      currentSource = null;
-    };
-    
+    currentSource.onended = () => { currentSource = null; };
     currentSource.start(0);
   } catch (e) {
     console.error('Audio error:', e);
@@ -399,18 +576,8 @@ function showError(msg) {
 // ============================================================================
 
 function init() {
-  // Setup text input
   setupTextInput();
-
-  // Setup speech (optional)
-  const hasSpeech = initSpeech();
-  
-  // Mic button
-  if (hasSpeech) {
-    micBtn.addEventListener('click', toggleMic);
-  }
-
-  // Connect
+  initSpeech();
   connect();
 }
 

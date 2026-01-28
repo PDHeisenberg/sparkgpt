@@ -11,17 +11,18 @@
     :root {
       --bg: #0d0d12;
       --surface: #1a1a24;
+      --surface2: #252532;
       --bubble-user: #2a2a3a;
       --bubble-bot: #1e3a5f;
       --cyan: #00d4ff;
+      --green: #00cc88;
+      --orange: #ff9500;
+      --red: #ff4444;
       --text: #ffffff;
       --text-dim: #888;
     }
 
-    html, body {
-      height: 100%;
-      overflow: hidden;
-    }
+    html, body { height: 100%; overflow: hidden; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
@@ -34,50 +35,92 @@
     /* Header */
     #header {
       flex-shrink: 0;
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 12px 16px;
       border-bottom: 1px solid var(--surface);
     }
 
-    #title {
-      font-size: 20px;
-      font-weight: 600;
+    #header-top {
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: space-between;
+      margin-bottom: 12px;
     }
 
-    #title span {
-      color: var(--cyan);
-    }
-
-    #status {
-      font-size: 12px;
-      color: var(--text-dim);
+    #title {
+      font-size: 18px;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
+    #title span { color: var(--cyan); }
+
+    #status {
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
     #status-dot {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: var(--text-dim);
     }
 
-    #status-dot.connected { background: #00cc88; }
-    #status-dot.listening { background: #00cc88; animation: pulse 1.5s infinite; }
-    #status-dot.thinking { background: #ffaa00; animation: pulse 0.5s infinite; }
+    #status-dot.connected { background: var(--green); }
+    #status-dot.listening { background: var(--green); animation: pulse 1s infinite; }
+    #status-dot.thinking { background: var(--orange); animation: pulse 0.4s infinite; }
     #status-dot.speaking { background: var(--cyan); }
-    #status-dot.error { background: #ff4444; }
+    #status-dot.recording { background: var(--red); animation: pulse 0.8s infinite; }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
+      50% { opacity: 0.3; }
     }
+
+    /* Mode tabs */
+    #modes {
+      display: flex;
+      gap: 6px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--text-dim);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .mode-btn.active {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    .mode-btn svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+    }
+
+    .mode-btn.active[data-mode="voice"] { color: var(--green); }
+    .mode-btn.active[data-mode="chat"] { color: var(--cyan); }
+    .mode-btn.active[data-mode="notes"] { color: var(--orange); }
 
     /* Chat area */
     #chat {
@@ -86,21 +129,21 @@
       padding: 16px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .message {
       max-width: 85%;
       padding: 12px 16px;
       border-radius: 18px;
-      font-size: 16px;
+      font-size: 15px;
       line-height: 1.5;
       animation: fadeIn 0.2s ease;
       word-wrap: break-word;
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
+      from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
@@ -116,10 +159,15 @@
       border-bottom-left-radius: 4px;
     }
 
-    .message.interim {
-      opacity: 0.5;
-      font-style: italic;
+    .message.system {
+      align-self: center;
+      background: var(--surface);
+      color: var(--text-dim);
+      font-size: 13px;
+      padding: 8px 16px;
     }
+
+    .message.interim { opacity: 0.5; font-style: italic; }
 
     .message.thinking::after {
       content: '...';
@@ -132,24 +180,107 @@
       66% { content: '...'; }
     }
 
+    .message pre {
+      background: var(--bg);
+      padding: 10px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 8px 0;
+      font-size: 13px;
+    }
+
     /* Input area */
     #input-area {
       flex-shrink: 0;
       padding: 12px 16px;
       padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
       background: var(--surface);
+    }
+
+    /* Voice mode input */
+    #voice-input {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 20px;
+    }
+
+    #voice-input.active { display: flex; }
+
+    #voice-status {
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    #voice-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: none;
+      background: var(--green);
+      cursor: pointer;
       display: flex;
-      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    #voice-btn:active { transform: scale(0.95); }
+    #voice-btn.listening { animation: pulse-ring 1.5s infinite; }
+
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(0, 204, 136, 0.5); }
+      100% { box-shadow: 0 0 0 20px rgba(0, 204, 136, 0); }
+    }
+
+    #voice-btn svg {
+      width: 32px;
+      height: 32px;
+      stroke: #000;
+      stroke-width: 2.5;
+      fill: none;
+    }
+
+    /* Chat mode input */
+    #chat-input {
+      display: none;
+      gap: 10px;
       align-items: flex-end;
     }
+
+    #chat-input.active { display: flex; }
+
+    #file-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid #333;
+      background: var(--bg);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    #file-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--text-dim);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    #file-input { display: none; }
 
     #text-input {
       flex: 1;
       background: var(--bg);
       border: 1px solid #333;
-      border-radius: 24px;
-      padding: 12px 18px;
-      font-size: 16px;
+      border-radius: 22px;
+      padding: 12px 16px;
+      font-size: 15px;
       color: var(--text);
       outline: none;
       resize: none;
@@ -157,61 +288,86 @@
       line-height: 1.4;
     }
 
-    #text-input::placeholder {
-      color: var(--text-dim);
-    }
+    #text-input::placeholder { color: var(--text-dim); }
+    #text-input:focus { border-color: var(--cyan); }
 
-    #text-input:focus {
-      border-color: var(--cyan);
-    }
-
-    .btn {
-      width: 48px;
-      height: 48px;
+    #send-btn {
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
       border: none;
+      background: var(--cyan);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.15s;
       flex-shrink: 0;
     }
 
-    .btn:active {
-      transform: scale(0.92);
-    }
-
-    .btn svg {
-      width: 22px;
-      height: 22px;
+    #send-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: #000;
       stroke-width: 2;
       fill: none;
     }
 
-    #mic-btn {
-      background: var(--bg);
-      border: 1px solid #333;
+    #send-btn:disabled { opacity: 0.3; }
+
+    /* Notes mode input */
+    #notes-input {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 20px;
     }
 
-    #mic-btn svg { stroke: var(--text); }
+    #notes-input.active { display: flex; }
 
-    #mic-btn.listening {
-      background: #00cc88;
-      border-color: #00cc88;
+    #notes-status {
+      font-size: 14px;
+      color: var(--text-dim);
+      text-align: center;
     }
 
-    #mic-btn.listening svg { stroke: #000; }
-
-    #send-btn {
-      background: var(--cyan);
+    #recording-time {
+      font-size: 24px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
     }
 
-    #send-btn svg { stroke: #000; }
+    #notes-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: none;
+      background: var(--orange);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
 
-    #send-btn:disabled {
-      opacity: 0.3;
-      cursor: default;
+    #notes-btn:active { transform: scale(0.95); }
+
+    #notes-btn.recording {
+      background: var(--red);
+      animation: pulse-ring-red 1.5s infinite;
+    }
+
+    @keyframes pulse-ring-red {
+      0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.5); }
+      100% { box-shadow: 0 0 0 20px rgba(255, 68, 68, 0); }
+    }
+
+    #notes-btn svg {
+      width: 32px;
+      height: 32px;
+      stroke: #000;
+      stroke-width: 2.5;
+      fill: none;
     }
 
     /* Error toast */
@@ -220,7 +376,7 @@
       bottom: 100px;
       left: 50%;
       transform: translateX(-50%);
-      background: #ff4444;
+      background: var(--red);
       color: white;
       padding: 10px 20px;
       border-radius: 8px;
@@ -231,11 +387,6 @@
     }
 
     #error.show { opacity: 1; }
-
-    /* Scrollbar */
-    #chat::-webkit-scrollbar { width: 4px; }
-    #chat::-webkit-scrollbar-track { background: transparent; }
-    #chat::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 
     /* Empty state */
     #empty {
@@ -249,30 +400,37 @@
       padding: 40px;
     }
 
-    #empty .icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-    }
+    #empty .icon { font-size: 40px; margin-bottom: 12px; }
+    #empty h2 { font-size: 16px; font-weight: 500; margin-bottom: 6px; color: var(--text); }
+    #empty p { font-size: 13px; }
 
-    #empty h2 {
-      font-size: 18px;
-      font-weight: 500;
-      margin-bottom: 8px;
-      color: var(--text);
-    }
-
-    #empty p {
-      font-size: 14px;
-      line-height: 1.5;
-    }
+    /* Scrollbar */
+    #chat::-webkit-scrollbar { width: 4px; }
+    #chat::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
   </style>
 </head>
 <body>
   <div id="header">
-    <div id="title">⚡ <span>Spark</span></div>
-    <div id="status">
-      <div id="status-dot"></div>
-      <span id="status-text">Connecting...</span>
+    <div id="header-top">
+      <div id="title">⚡ <span>Spark</span></div>
+      <div id="status">
+        <div id="status-dot"></div>
+        <span id="status-text">Connecting...</span>
+      </div>
+    </div>
+    <div id="modes">
+      <button class="mode-btn" data-mode="voice">
+        <svg viewBox="0 0 24 24"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/></svg>
+        Voice
+      </button>
+      <button class="mode-btn active" data-mode="chat">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat
+      </button>
+      <button class="mode-btn" data-mode="notes">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Notes
+      </button>
     </div>
   </div>
 
@@ -280,30 +438,54 @@
     <div id="empty">
       <div class="icon">⚡</div>
       <h2>Hey, I'm Spark</h2>
-      <p>Type a message or tap the mic to talk</p>
+      <p id="mode-hint">Type a message or attach a file</p>
     </div>
   </div>
 
   <div id="input-area">
-    <button id="mic-btn" class="btn" title="Voice input">
-      <svg viewBox="0 0 24 24">
-        <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
-        <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
-        <line x1="12" y1="19" x2="12" y2="23"/>
-        <line x1="8" y1="23" x2="16" y2="23"/>
-      </svg>
-    </button>
-    <textarea id="text-input" placeholder="Message Spark..." rows="1"></textarea>
-    <button id="send-btn" class="btn" title="Send" disabled>
-      <svg viewBox="0 0 24 24">
-        <line x1="22" y1="2" x2="11" y2="13"/>
-        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-      </svg>
-    </button>
+    <!-- Voice mode -->
+    <div id="voice-input">
+      <div id="voice-status">Tap to talk</div>
+      <button id="voice-btn">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Chat mode -->
+    <div id="chat-input" class="active">
+      <button id="file-btn" title="Attach file">
+        <svg viewBox="0 0 24 24">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </button>
+      <input type="file" id="file-input" multiple accept="image/*,.pdf,.txt,.md,.json,.csv">
+      <textarea id="text-input" placeholder="Message Spark..." rows="1"></textarea>
+      <button id="send-btn" title="Send" disabled>
+        <svg viewBox="0 0 24 24">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Notes mode -->
+    <div id="notes-input">
+      <div id="notes-status">Tap to start recording</div>
+      <div id="recording-time">0:00</div>
+      <button id="notes-btn">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="3" fill="#000"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <div id="error"></div>
-
-  <script type="module" src="app.js?v=5"></script>
+  <script type="module" src="app.js?v=6"></script>
 </body>
 </html>

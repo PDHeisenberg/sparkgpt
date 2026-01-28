@@ -1,234 +1,281 @@
 /**
- * Spark Voice Server
+ * Spark Voice Server - Three Modes
  * 
- * Scalable architecture with pluggable providers:
- * - STT: Browser (free) → Deepgram (paid) → Whisper (self-host)
- * - TTS: ElevenLabs → OpenAI → Deepgram → Kokoro (self-host)
- * - LLM: Claude (Anthropic) → OpenAI → Local
- * - Avatar: Robot (built-in) → TalkingHead → Custom
+ * Voice Mode: Fast conversational (Haiku)
+ * Chat Mode: Deep thinking (Opus), files, links
+ * Notes Mode: Record, transcribe, summarize
  */
 
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import express from 'express';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { TTSProvider } from './providers/tts.js';
-import { LLMProvider } from './providers/llm.js';
 import { loadConfig } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
 
-// Initialize providers
-const tts = new TTSProvider(config.tts);
-const llm = new LLMProvider(config.llm);
+// Models for different modes
+const MODELS = {
+  voice: 'claude-3-5-haiku-20241022',  // Fast
+  chat: 'claude-sonnet-4-20250514',      // Deep thinking
+  notes: 'claude-sonnet-4-20250514'      // For summarization
+};
 
-// Express app for static files
+// Gateway connection
+const GATEWAY_URL = config.llm?.gatewayUrl || 'http://localhost:18789';
+const GATEWAY_TOKEN = config.llm?.gatewayToken || loadGatewayToken();
+
+function loadGatewayToken() {
+  const configPath = '/home/heisenberg/.clawdbot/clawdbot.json';
+  if (existsSync(configPath)) {
+    try {
+      const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
+      return cfg.gateway?.auth?.token;
+    } catch {}
+  }
+  return null;
+}
+
+// TTS
+const tts = new TTSProvider(config.tts);
+
+console.log(`🧠 Models: Voice=${MODELS.voice}, Chat=${MODELS.chat}`);
+
+// Express app
 const app = express();
 
-// No caching for development, CORS headers
+// No caching
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.header('Pragma', 'no-cache');
-  res.header('Expires', '0');
   next();
 });
 
-app.use(express.static(join(__dirname, '../public'), { etag: false, lastModified: false }));
+app.use(express.static(join(__dirname, '../public'), { etag: false }));
 
-// API endpoint for config (non-sensitive)
 app.get('/api/config', (req, res) => {
-  res.json({
-    avatar: config.avatar,
-    features: config.features,
-  });
+  res.json({ modes: Object.keys(MODELS) });
 });
 
-// Create HTTP server
+// HTTP server
 const server = createServer(app);
 
-// WebSocket server on same port
+// WebSocket server
 const wss = new WebSocketServer({ server });
 
-// Conversation store (in production, use Redis or DB)
-const conversations = new Map();
+// Session store
+const sessions = new Map();
 
 // Connection handler
-wss.on('connection', (ws, req) => {
-  const sessionId = generateSessionId();
-  console.log(`⚡ [${sessionId}] Client connected`);
+wss.on('connection', (ws) => {
+  const sessionId = `spark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  console.log(`⚡ [${sessionId}] Connected`);
   
-  // Initialize conversation
-  conversations.set(sessionId, {
+  sessions.set(sessionId, {
     history: [],
     createdAt: Date.now(),
-    lastActivity: Date.now(),
   });
   
   ws.sessionId = sessionId;
-  ws.isAlive = true;
+  ws.send(JSON.stringify({ type: 'ready', sessionId }));
   
-  // Send ready signal
-  ws.send(JSON.stringify({ 
-    type: 'ready', 
-    sessionId,
-    config: { avatar: config.avatar }
-  }));
-  
-  // Heartbeat
-  ws.on('pong', () => { ws.isAlive = true; });
-  
-  // Message handler
   ws.on('message', async (data) => {
-    const session = conversations.get(sessionId);
-    if (!session) return;
-    
-    session.lastActivity = Date.now();
-    
     try {
-      const message = JSON.parse(data.toString());
-      await handleMessage(ws, session, message);
-    } catch (error) {
-      console.error(`[${sessionId}] Error:`, error);
-      ws.send(JSON.stringify({ 
-        type: 'error', 
-        message: error.message,
-        recoverable: true
-      }));
+      const msg = JSON.parse(data.toString());
+      await handleMessage(ws, msg);
+    } catch (e) {
+      console.error(`[${sessionId}] Error:`, e.message);
+      ws.send(JSON.stringify({ type: 'error', message: e.message }));
     }
   });
   
-  // Cleanup on close
   ws.on('close', () => {
     console.log(`[${sessionId}] Disconnected`);
-    // Keep conversation for reconnect (clean up after timeout)
-    setTimeout(() => {
-      const session = conversations.get(sessionId);
-      if (session && Date.now() - session.lastActivity > 30 * 60 * 1000) {
-        conversations.delete(sessionId);
-      }
-    }, 30 * 60 * 1000);
   });
 });
 
 // Message handler
-async function handleMessage(ws, session, message) {
-  switch (message.type) {
+async function handleMessage(ws, msg) {
+  const session = sessions.get(ws.sessionId);
+  if (!session) return;
+
+  switch (msg.type) {
     case 'transcript':
-      await handleTranscript(ws, session, message.text, message.isFinal);
+      await handleTranscript(ws, session, msg.text, msg.mode || 'chat');
       break;
       
-    case 'interrupt':
-      // User interrupted, stop any ongoing TTS
-      ws.send(JSON.stringify({ type: 'interrupt_ack' }));
-      break;
-      
-    case 'ping':
-      ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
-      break;
-      
-    case 'config':
-      // Update session config
-      Object.assign(session, message.updates);
+    case 'voice_note':
+      await handleVoiceNote(ws, session, msg.audio, msg.duration);
       break;
       
     default:
-      console.warn(`Unknown message type: ${message.type}`);
+      console.warn(`Unknown message: ${msg.type}`);
   }
 }
 
-// Handle transcript from STT
-async function handleTranscript(ws, session, text, isFinal = true) {
+// Handle text/voice transcript
+async function handleTranscript(ws, session, text, mode) {
   if (!text?.trim()) return;
   
-  console.log(`🎤 [${ws.sessionId}] User: ${text}`);
+  const model = MODELS[mode] || MODELS.chat;
+  console.log(`🎤 [${ws.sessionId}] (${mode}) User: ${text.slice(0, 50)}...`);
   
-  // Add to history
   session.history.push({ role: 'user', content: text });
-  
-  // Acknowledge receipt
-  ws.send(JSON.stringify({ type: 'ack', text }));
-  
-  // Get AI response
   ws.send(JSON.stringify({ type: 'thinking' }));
   
-  const response = await llm.chat(session.history);
-  console.log(`⚡ [${ws.sessionId}] Spark: ${response}`);
+  // Get response
+  const startTime = Date.now();
+  const response = await chat(session.history, model, mode);
+  console.log(`🧠 [${ws.sessionId}] ${Date.now() - startTime}ms: ${response.slice(0, 50)}...`);
   
-  // Add to history
   session.history.push({ role: 'assistant', content: response });
   
-  // Trim history if too long (keep last 20 messages)
-  if (session.history.length > 20) {
-    session.history = session.history.slice(-20);
+  // Trim history
+  if (session.history.length > 30) {
+    session.history = session.history.slice(-30);
   }
   
-  // Send text response
+  // Send text
   ws.send(JSON.stringify({ type: 'text', content: response }));
   
-  // Generate TTS
-  try {
-    const audioBuffer = await tts.synthesize(response);
-    
-    // Send complete audio (simpler, more reliable)
-    ws.send(JSON.stringify({ 
-      type: 'audio',
-      data: audioBuffer.toString('base64')
-    }));
-    
-    ws.send(JSON.stringify({ type: 'done' }));
-  } catch (ttsError) {
-    console.error(`[${ws.sessionId}] TTS Error:`, ttsError.message);
-    ws.send(JSON.stringify({ type: 'done' }));
+  // TTS for voice mode
+  if (mode === 'voice') {
+    try {
+      const audio = await tts.synthesize(response);
+      ws.send(JSON.stringify({ type: 'audio', data: audio.toString('base64') }));
+    } catch (e) {
+      console.error('TTS error:', e.message);
+    }
   }
+  
+  ws.send(JSON.stringify({ type: 'done' }));
 }
 
-// Heartbeat interval to detect dead connections
-const heartbeat = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (!ws.isAlive) {
-      console.log(`[${ws.sessionId}] Terminating dead connection`);
-      return ws.terminate();
-    }
-    ws.isAlive = false;
-    ws.ping();
+// Handle voice note (transcribe + summarize)
+async function handleVoiceNote(ws, session, audioBase64, duration) {
+  console.log(`🎙️ [${ws.sessionId}] Voice note: ${duration}s`);
+  
+  ws.send(JSON.stringify({ type: 'thinking' }));
+  
+  // Save audio file
+  const notesDir = join(__dirname, '../notes');
+  if (!existsSync(notesDir)) mkdirSync(notesDir, { recursive: true });
+  
+  const filename = `note_${Date.now()}.webm`;
+  const filepath = join(notesDir, filename);
+  writeFileSync(filepath, Buffer.from(audioBase64, 'base64'));
+  
+  // Transcribe using Whisper API via gateway
+  let transcription;
+  try {
+    transcription = await transcribeAudio(audioBase64);
+    ws.send(JSON.stringify({ type: 'transcription', text: transcription }));
+  } catch (e) {
+    console.error('Transcription error:', e.message);
+    ws.send(JSON.stringify({ type: 'error', message: 'Transcription failed' }));
+    ws.send(JSON.stringify({ type: 'done' }));
+    return;
+  }
+  
+  // Summarize
+  const prompt = `Here's a voice note transcription. Please provide a clear, concise summary with key points:\n\n${transcription}`;
+  const summary = await chat([{ role: 'user', content: prompt }], MODELS.notes, 'notes');
+  
+  ws.send(JSON.stringify({ type: 'text', content: summary }));
+  ws.send(JSON.stringify({ type: 'done' }));
+}
+
+// Chat with LLM
+async function chat(history, model, mode) {
+  const systemPrompts = {
+    voice: 'You are Spark, a voice assistant. Be concise (under 50 words), natural, conversational. No markdown.',
+    chat: 'You are Spark, an AI assistant. Be thorough and helpful. Use markdown for formatting when useful.',
+    notes: 'You are Spark. Summarize clearly with bullet points for key takeaways.'
+  };
+  
+  const messages = [
+    { role: 'system', content: systemPrompts[mode] || systemPrompts.chat },
+    ...history.slice(-10)
+  ];
+
+  const response = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: mode === 'voice' ? 150 : 2000,
+    }),
   });
-}, 30000);
 
-wss.on('close', () => {
-  clearInterval(heartbeat);
-});
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
 
-// Session ID generator
-function generateSessionId() {
-  return `spark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || 'No response';
+}
+
+// Transcribe audio using OpenAI Whisper API
+async function transcribeAudio(audioBase64) {
+  // Get OpenAI key from skills config
+  const configPath = '/home/heisenberg/.clawdbot/clawdbot.json';
+  let apiKey;
+  
+  if (existsSync(configPath)) {
+    const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
+    apiKey = cfg.skills?.entries?.['openai-whisper-api']?.apiKey;
+  }
+  
+  if (!apiKey) {
+    throw new Error('OpenAI API key not found');
+  }
+  
+  // Convert base64 to buffer
+  const audioBuffer = Buffer.from(audioBase64, 'base64');
+  
+  // Create form data
+  const formData = new FormData();
+  formData.append('file', new Blob([audioBuffer], { type: 'audio/webm' }), 'audio.webm');
+  formData.append('model', 'whisper-1');
+  formData.append('language', 'en');
+  
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Whisper error: ${err}`);
+  }
+  
+  const data = await response.json();
+  return data.text;
 }
 
 // Start server
-const PORT = config.port;
+const PORT = config.port || 3456;
 server.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════╗
 ║                    ⚡ SPARK VOICE ⚡                   ║
 ╠═══════════════════════════════════════════════════════╣
-║  Server running on http://localhost:${PORT}             ║
+║  Server: http://localhost:${PORT}                      ║
 ║                                                       ║
-║  Providers:                                           ║
-║  • LLM: ${'clawdbot-gateway'.padEnd(40)}║
-║  • TTS: ${config.tts.provider.padEnd(40)}║
-║  • Avatar: ${config.avatar.type.padEnd(37)}║
+║  Modes:                                               ║
+║  • Voice: ${MODELS.voice}                ║
+║  • Chat:  ${MODELS.chat}             ║
+║  • Notes: Whisper + ${MODELS.notes}  ║
 ╚═══════════════════════════════════════════════════════╝
-  `);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('Shutting down...');
-  wss.close();
-  server.close();
-  process.exit(0);
+`);
 });
