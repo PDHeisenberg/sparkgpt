@@ -162,15 +162,37 @@
       backdrop-filter: blur(20px);
     }
 
-    #empty {
-      flex: 1;
+    /* Quick actions */
+    #shortcuts {
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
       justify-content: center;
-      color: var(--text-tertiary);
-      font-size: 18px;
-      font-weight: 400;
-      letter-spacing: 0.3px;
+      padding: 40px 20px;
+      padding-bottom: 140px;
+    }
+
+    .shortcut {
+      background: var(--glass);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      border: 0.5px solid var(--glass-border);
+      border-radius: 18px;
+      padding: 14px 20px;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .shortcut:active {
+      transform: scale(0.95);
+    }
+
+    .shortcut:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.25);
     }
 
     /* Floating nav pill */
@@ -381,7 +403,14 @@
 
   <div id="app">
     <div id="messages">
-      <div id="empty">Ask me anything</div>
+      <div id="shortcuts">
+        <button class="shortcut" data-msg="Any updates for me?">Any updates for me?</button>
+        <button class="shortcut" data-msg="Reports for today">Reports for today</button>
+        <button class="shortcut" data-msg="Check my portfolio">Check my portfolio</button>
+        <button class="shortcut" data-msg="What's on my calendar?">What's on my calendar?</button>
+        <button class="shortcut" data-msg="Quick news briefing">Quick news briefing</button>
+        <button class="shortcut" data-msg="Summarize my emails">Summarize my emails</button>
+      </div>
     </div>
 
     <div id="status"></div>

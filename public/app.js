@@ -9,7 +9,7 @@ const CONFIG = {
 
 // Elements
 const messagesEl = document.getElementById('messages');
-const emptyEl = document.getElementById('empty');
+const shortcutsEl = document.getElementById('shortcuts');
 const textInput = document.getElementById('text-input');
 const sendBtn = document.getElementById('send-btn');
 const voiceBtn = document.getElementById('voice-btn');
@@ -38,7 +38,7 @@ let timerInterval = null;
 // ============================================================================
 
 function addMsg(text, type) {
-  if (emptyEl) emptyEl.style.display = 'none';
+  if (shortcutsEl) shortcutsEl.style.display = 'none';
   const el = document.createElement('div');
   el.className = `msg ${type}`;
   el.textContent = text;
@@ -400,3 +400,11 @@ async function playAudio(base64) {
 
 initSpeech();
 connect();
+
+// Shortcut buttons
+document.querySelectorAll('.shortcut').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const msg = btn.dataset.msg;
+    if (msg) send(msg, 'chat');
+  });
+});
