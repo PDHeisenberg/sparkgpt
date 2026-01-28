@@ -31,83 +31,89 @@
       flex-direction: column;
     }
 
-    /* Header with robot */
+    /* Header */
     #header {
       flex-shrink: 0;
+      padding: 16px 20px;
       display: flex;
-      flex-direction: column;
       align-items: center;
-      padding: 20px 20px 10px;
-      background: linear-gradient(180deg, var(--bg) 0%, transparent 100%);
-      position: relative;
-      z-index: 10;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--surface);
     }
 
-    #robot-wrap {
-      width: 120px;
-      height: 120px;
+    #title {
+      font-size: 20px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    #robot-canvas {
-      width: 100%;
-      height: 100%;
+    #title span {
+      color: var(--cyan);
     }
 
     #status {
-      margin-top: 8px;
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-dim);
-      opacity: 0.7;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    #status.listening { color: #00cc88; }
-    #status.thinking { color: #ffaa00; }
-    #status.speaking { color: var(--cyan); opacity: 0; }
+    #status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    #status-dot.connected { background: #00cc88; }
+    #status-dot.listening { background: #00cc88; animation: pulse 1.5s infinite; }
+    #status-dot.thinking { background: #ffaa00; animation: pulse 0.5s infinite; }
+    #status-dot.speaking { background: var(--cyan); }
+    #status-dot.error { background: #ff4444; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
 
     /* Chat area */
     #chat {
       flex: 1;
       overflow-y: auto;
-      overflow-x: hidden;
-      padding: 10px 16px 20px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 12px;
-      scroll-behavior: smooth;
     }
 
     .message {
       max-width: 85%;
-      padding: 14px 18px;
-      border-radius: 20px;
-      font-size: 17px;
+      padding: 12px 16px;
+      border-radius: 18px;
+      font-size: 16px;
       line-height: 1.5;
-      animation: fadeIn 0.3s ease;
+      animation: fadeIn 0.2s ease;
       word-wrap: break-word;
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
+      from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
     .message.user {
       align-self: flex-end;
       background: var(--bubble-user);
-      border-bottom-right-radius: 6px;
+      border-bottom-right-radius: 4px;
     }
 
     .message.bot {
       align-self: flex-start;
       background: var(--bubble-bot);
-      border-bottom-left-radius: 6px;
-    }
-
-    .message.bot .name {
-      font-size: 12px;
-      color: var(--cyan);
-      margin-bottom: 6px;
-      font-weight: 600;
+      border-bottom-left-radius: 4px;
     }
 
     .message.interim {
@@ -115,80 +121,98 @@
       font-style: italic;
     }
 
-    .message.thinking {
-      color: var(--text-dim);
-    }
-
     .message.thinking::after {
-      content: '';
-      animation: dots 1.5s infinite;
+      content: '...';
+      animation: dots 1s infinite;
     }
 
     @keyframes dots {
-      0%, 20% { content: '.'; }
-      40% { content: '..'; }
-      60%, 100% { content: '...'; }
+      0% { content: '.'; }
+      33% { content: '..'; }
+      66% { content: '...'; }
     }
 
-    /* Controls */
-    #controls {
+    /* Input area */
+    #input-area {
       flex-shrink: 0;
-      padding: 16px;
-      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      padding: 12px 16px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      background: var(--surface);
       display: flex;
-      justify-content: center;
-      gap: 16px;
-      background: linear-gradient(0deg, var(--bg) 60%, transparent 100%);
+      gap: 12px;
+      align-items: flex-end;
     }
 
-    .icon-btn {
-      width: 60px;
-      height: 60px;
+    #text-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid #333;
+      border-radius: 24px;
+      padding: 12px 18px;
+      font-size: 16px;
+      color: var(--text);
+      outline: none;
+      resize: none;
+      max-height: 120px;
+      line-height: 1.4;
+    }
+
+    #text-input::placeholder {
+      color: var(--text-dim);
+    }
+
+    #text-input:focus {
+      border-color: var(--cyan);
+    }
+
+    .btn {
+      width: 48px;
+      height: 48px;
       border-radius: 50%;
       border: none;
-      background: var(--surface);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.2s;
+      transition: all 0.15s;
+      flex-shrink: 0;
     }
 
-    .icon-btn:active {
-      transform: scale(0.95);
+    .btn:active {
+      transform: scale(0.92);
     }
 
-    .icon-btn.active {
-      background: #ff4444;
-    }
-
-    .icon-btn.listening {
-      background: #00cc88;
-      box-shadow: 0 0 20px rgba(0, 204, 136, 0.4);
-    }
-
-    .icon-btn svg {
-      width: 28px;
-      height: 28px;
-      stroke: var(--text);
+    .btn svg {
+      width: 22px;
+      height: 22px;
       stroke-width: 2;
       fill: none;
     }
 
-    /* Connection dot */
-    #connection {
-      position: fixed;
-      top: 16px;
-      right: 16px;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--text-dim);
-      z-index: 100;
+    #mic-btn {
+      background: var(--bg);
+      border: 1px solid #333;
     }
 
-    #connection.connected { background: #00cc88; }
-    #connection.error { background: #ff4444; }
+    #mic-btn svg { stroke: var(--text); }
+
+    #mic-btn.listening {
+      background: #00cc88;
+      border-color: #00cc88;
+    }
+
+    #mic-btn.listening svg { stroke: #000; }
+
+    #send-btn {
+      background: var(--cyan);
+    }
+
+    #send-btn svg { stroke: #000; }
+
+    #send-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
 
     /* Error toast */
     #error {
@@ -198,7 +222,7 @@
       transform: translateX(-50%);
       background: #ff4444;
       color: white;
-      padding: 12px 24px;
+      padding: 10px 20px;
       border-radius: 8px;
       font-size: 14px;
       opacity: 0;
@@ -208,45 +232,60 @@
 
     #error.show { opacity: 1; }
 
-    /* Loading state */
-    .loading #robot-wrap {
-      animation: pulse 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 0.5; }
-      50% { opacity: 1; }
-    }
-
     /* Scrollbar */
-    #chat::-webkit-scrollbar {
-      width: 4px;
+    #chat::-webkit-scrollbar { width: 4px; }
+    #chat::-webkit-scrollbar-track { background: transparent; }
+    #chat::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+    /* Empty state */
+    #empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 40px;
     }
 
-    #chat::-webkit-scrollbar-track {
-      background: transparent;
+    #empty .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
     }
 
-    #chat::-webkit-scrollbar-thumb {
-      background: var(--surface);
-      border-radius: 2px;
+    #empty h2 {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    #empty p {
+      font-size: 14px;
+      line-height: 1.5;
     }
   </style>
 </head>
-<body class="loading">
-  <div id="connection"></div>
-  
+<body>
   <div id="header">
-    <div id="robot-wrap">
-      <canvas id="robot-canvas"></canvas>
+    <div id="title">⚡ <span>Spark</span></div>
+    <div id="status">
+      <div id="status-dot"></div>
+      <span id="status-text">Connecting...</span>
     </div>
-    <div id="status">Connecting...</div>
   </div>
 
-  <div id="chat"></div>
+  <div id="chat">
+    <div id="empty">
+      <div class="icon">⚡</div>
+      <h2>Hey, I'm Spark</h2>
+      <p>Type a message or tap the mic to talk</p>
+    </div>
+  </div>
 
-  <div id="controls">
-    <button id="mute-btn" class="icon-btn listening" title="Listening">
+  <div id="input-area">
+    <button id="mic-btn" class="btn" title="Voice input">
       <svg viewBox="0 0 24 24">
         <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
         <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
@@ -254,18 +293,17 @@
         <line x1="8" y1="23" x2="16" y2="23"/>
       </svg>
     </button>
+    <textarea id="text-input" placeholder="Message Spark..." rows="1"></textarea>
+    <button id="send-btn" class="btn" title="Send" disabled>
+      <svg viewBox="0 0 24 24">
+        <line x1="22" y1="2" x2="11" y2="13"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
   </div>
 
   <div id="error"></div>
 
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
-    }
-  }
-  </script>
-
-  <script type="module" src="app.js?v=4"></script>
+  <script type="module" src="app.js?v=5"></script>
 </body>
 </html>
