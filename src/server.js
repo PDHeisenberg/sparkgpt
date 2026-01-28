@@ -27,6 +27,14 @@ const llm = new LLMProvider(config.llm);
 
 // Express app for static files
 const app = express();
+
+// CORS for Netlify frontend
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
+
 app.use(express.static(join(__dirname, '../public')));
 
 // API endpoint for config (non-sensitive)
