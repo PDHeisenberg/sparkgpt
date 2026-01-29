@@ -14,6 +14,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { TTSProvider } from './providers/tts.js';
 import { loadConfig } from './config.js';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdf = require('pdf-parse');
+const mammoth = require('mammoth');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
@@ -472,7 +476,7 @@ app.get('/api/reports/today', async (req, res) => {
 const server = createServer(app);
 
 // WebSocket server
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: 50 * 1024 * 1024 }); // 50MB max for large files
 
 // Session store
 const sessions = new Map();
@@ -512,7 +516,7 @@ async function handleMessage(ws, msg) {
 
   switch (msg.type) {
     case 'transcript':
-      await handleTranscript(ws, session, msg.text, msg.mode || 'chat', msg.image);
+      await handleTranscript(ws, session, msg.text, msg.mode || 'chat', msg.image, msg.file);
       break;
       
     case 'voice_note':
@@ -524,45 +528,99 @@ async function handleMessage(ws, msg) {
   }
 }
 
-// Handle text/voice transcript (with optional image)
-async function handleTranscript(ws, session, text, mode, imageDataUrl) {
+// Extract text from PDF
+async function extractPdfText(dataUrl) {
+  const base64Data = dataUrl.split(',')[1];
+  const buffer = Buffer.from(base64Data, 'base64');
+  const data = await pdf(buffer);
+  return data.text;
+}
+
+// Extract text from DOCX
+async function extractDocxText(dataUrl) {
+  const base64Data = dataUrl.split(',')[1];
+  const buffer = Buffer.from(base64Data, 'base64');
+  const result = await mammoth.extractRawText({ buffer });
+  return result.value;
+}
+
+// Handle text/voice transcript (with optional image or file)
+async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData) {
   if (!text?.trim()) return;
   
   const model = MODELS[mode] || MODELS.chat;
-  console.log(`🎤 [${ws.sessionId}] (${mode}) User: ${text.slice(0, 50)}...${imageDataUrl ? ' [+image]' : ''}`);
+  const hasImage = !!imageDataUrl;
+  const hasFile = !!fileData;
+  console.log(`🎤 [${ws.sessionId}] (${mode}) User: ${text.slice(0, 50)}...${hasImage ? ' [+image]' : ''}${hasFile ? ` [+${fileData.filename}]` : ''}`);
+  
+  ws.send(JSON.stringify({ type: 'thinking' }));
   
   // Load shared history from main Clawdbot session
   const sharedHistory = loadSessionHistory(20);
   
-  // Build content array for multimodal if image present
-  let userContent;
-  if (imageDataUrl) {
-    userContent = [
-      { type: 'text', text: text },
-      { 
-        type: 'image', 
-        source: { 
-          type: 'base64', 
-          media_type: imageDataUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg',
-          data: imageDataUrl.replace(/^data:[^;]+;base64,/, '')
+  // Build content - handle images, PDFs, and docs
+  let userContent = text;
+  let fullText = text;
+  
+  try {
+    if (imageDataUrl) {
+      // Image - use Anthropic format for Claude models
+      userContent = [
+        { type: 'text', text: text },
+        { 
+          type: 'image', 
+          source: { 
+            type: 'base64', 
+            media_type: imageDataUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg',
+            data: imageDataUrl.replace(/^data:[^;]+;base64,/, '')
+          }
         }
+      ];
+    } else if (fileData) {
+      // PDF or DOCX - extract text
+      const ext = fileData.filename.split('.').pop().toLowerCase();
+      let extractedText = '';
+      
+      if (ext === 'pdf') {
+        console.log(`📄 [${ws.sessionId}] Extracting PDF: ${fileData.filename}`);
+        extractedText = await extractPdfText(fileData.dataUrl);
+      } else if (ext === 'docx' || ext === 'doc') {
+        console.log(`📄 [${ws.sessionId}] Extracting DOCX: ${fileData.filename}`);
+        extractedText = await extractDocxText(fileData.dataUrl);
       }
-    ];
-  } else {
-    userContent = text;
+      
+      // Truncate if too long (keep first 50k chars)
+      if (extractedText.length > 50000) {
+        extractedText = extractedText.slice(0, 50000) + '\n\n[... truncated ...]';
+      }
+      
+      fullText = `${text}\n\n[File: ${fileData.filename}]\n\n${extractedText}`;
+      userContent = fullText;
+    }
+  } catch (e) {
+    console.error(`[${ws.sessionId}] File extraction error:`, e.message);
+    ws.send(JSON.stringify({ type: 'error', message: `Failed to read file: ${e.message}` }));
+    ws.send(JSON.stringify({ type: 'done' }));
+    return;
   }
   
   // Add current message to history for this request
   sharedHistory.push({ role: 'user', content: userContent });
   
-  // Append user message to shared session file
-  appendToSessionSync('user', text);
-  
-  ws.send(JSON.stringify({ type: 'thinking' }));
+  // Append user message to shared session file (text only, not full base64)
+  appendToSessionSync('user', typeof userContent === 'string' ? userContent.slice(0, 2000) : text);
   
   // Get response using shared history
   const startTime = Date.now();
-  const response = await chat(sharedHistory, model, mode);
+  let response;
+  try {
+    response = await chat(sharedHistory, model, mode);
+  } catch (e) {
+    console.error(`[${ws.sessionId}] Chat error:`, e.message);
+    ws.send(JSON.stringify({ type: 'error', message: `API error: ${e.message}` }));
+    ws.send(JSON.stringify({ type: 'done' }));
+    return;
+  }
   console.log(`🧠 [${ws.sessionId}] ${Date.now() - startTime}ms: ${response.slice(0, 50)}...`);
   
   // Append assistant response to shared session file
@@ -643,23 +701,43 @@ async function chat(history, model, mode) {
     body.thinking = { type: 'enabled', budget_tokens: 2000 };
   }
 
-  const response = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-    },
-    body: JSON.stringify(body),
-  });
+  // Add timeout for large requests (images can be slow)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+  
+  try {
+    const jsonBody = JSON.stringify(body);
+    const bodySize = Buffer.byteLength(jsonBody);
+    console.log(`📡 Sending request to ${GATEWAY_URL}/v1/chat/completions (${Math.round(bodySize/1024)}KB)`);
+    
+    const response = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+      },
+      body: jsonBody,
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const err = await response.text();
-    console.error('API error:', err);
-    throw new Error(`API error: ${response.status}`);
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('API error:', response.status, err);
+      throw new Error(`API error: ${response.status} - ${err.slice(0, 200)}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || 'No response';
+  } catch (e) {
+    clearTimeout(timeout);
+    console.error('Chat fetch error:', e.message, e.cause || '');
+    if (e.name === 'AbortError') {
+      throw new Error('Request timed out (2 minutes)');
+    }
+    throw new Error(`Chat failed: ${e.message}`);
   }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || 'No response';
 }
 
 // Transcribe audio using OpenAI Whisper API
