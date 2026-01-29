@@ -548,8 +548,9 @@ async function extractDocxText(dataUrl) {
 async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData) {
   if (!text?.trim()) return;
   
-  const model = MODELS[mode] || MODELS.chat;
   const hasImage = !!imageDataUrl;
+  // Use Sonnet for images (faster), Opus for text-only chat
+  const model = hasImage ? 'claude-sonnet-4-20250514' : (MODELS[mode] || MODELS.chat);
   const hasFile = !!fileData;
   console.log(`🎤 [${ws.sessionId}] (${mode}) User: ${text.slice(0, 50)}...${hasImage ? ' [+image]' : ''}${hasFile ? ` [+${fileData.filename}]` : ''}`);
   
@@ -614,7 +615,7 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
   const startTime = Date.now();
   let response;
   try {
-    response = await chat(sharedHistory, model, mode);
+    response = await chat(sharedHistory, model, mode, hasImage);
   } catch (e) {
     console.error(`[${ws.sessionId}] Chat error:`, e.message);
     ws.send(JSON.stringify({ type: 'error', message: `API error: ${e.message}` }));
@@ -677,7 +678,7 @@ async function handleVoiceNote(ws, session, audioBase64, duration) {
 }
 
 // Chat with LLM
-async function chat(history, model, mode) {
+async function chat(history, model, mode, hasImage = false) {
   const systemPrompts = {
     voice: 'You are Spark, a voice assistant. Be concise (under 50 words), natural, conversational. No markdown.',
     chat: 'You are Spark, an AI assistant. Be thorough and helpful. Use markdown for formatting when useful.',
@@ -696,8 +697,8 @@ async function chat(history, model, mode) {
     max_tokens: mode === 'voice' ? 150 : 4000,
   };
   
-  // Enable extended thinking for chat mode (Opus 4.5)
-  if (mode === 'chat') {
+  // Enable extended thinking for chat mode (Opus 4.5), but not for images (too slow)
+  if (mode === 'chat' && !hasImage) {
     body.thinking = { type: 'enabled', budget_tokens: 2000 };
   }
 
