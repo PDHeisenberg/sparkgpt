@@ -744,6 +744,11 @@
       padding: 6px 4px;
       font-family: inherit;
       min-width: 0;
+      resize: none;
+      line-height: 1.4;
+      min-height: 24px;
+      max-height: 120px; /* ~5 lines */
+      overflow-y: auto;
     }
 
     #text-input::placeholder { color: var(--text-tertiary); }
@@ -1122,7 +1127,7 @@
           </svg>
         </button>
         <input type="file" id="file-input" multiple accept="image/*,.pdf,.txt,.md,.json,.csv">
-        <input type="text" id="text-input" placeholder="Talk to me">
+        <textarea id="text-input" placeholder="Talk to me" rows="1"></textarea>
         <button id="send-btn">
           <svg viewBox="0 0 24 24">
             <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -1206,6 +1211,6 @@
   </div>
 
   <div id="toast"></div>
-  <script type="module" src="app.js?v=37"></script>
+  <script type="module" src="app.js?v=38"></script>
 </body>
 </html>

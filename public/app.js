@@ -295,7 +295,7 @@ textInput?.addEventListener('input', () => {
   // Auto-resize textarea
   if (textInput) {
     textInput.style.height = 'auto';
-    textInput.style.height = Math.min(textInput.scrollHeight, 96) + 'px';
+    textInput.style.height = Math.min(textInput.scrollHeight, 120) + 'px';
   }
 });
 
