@@ -40,6 +40,34 @@ const closeNotesBtn = document.getElementById('close-notes-btn');
 const deleteNotesBtn = document.getElementById('delete-notes-btn');
 const closeBtn = document.getElementById('close-btn');
 const historyBtn = document.getElementById('history-btn');
+const themeBtn = document.getElementById('theme-btn');
+
+// Theme toggle
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+  }
+}
+initTheme();
+
+themeBtn?.addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
+  let newTheme;
+  if (current === 'dark') {
+    newTheme = 'light';
+  } else if (current === 'light') {
+    newTheme = 'dark';
+  } else {
+    // No explicit theme set, toggle from system preference
+    newTheme = prefersDark ? 'light' : 'dark';
+  }
+  
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('theme', newTheme);
+});
 
 // State
 let ws = null;

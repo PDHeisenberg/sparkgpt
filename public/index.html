@@ -23,6 +23,78 @@
       --text-tertiary: rgba(0, 0, 0, 0.35);
       --msg-user: #007AFF;
       --msg-bot: rgba(0, 0, 0, 0.05);
+      --input-bg: rgba(255, 255, 255, 0.9);
+      --input-border: rgba(0, 0, 0, 0.1);
+      --shortcut-bg: rgba(0, 0, 0, 0.05);
+      --shortcut-border: rgba(0, 0, 0, 0.1);
+    }
+
+    /* Dark mode - system preference */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0a0a0a;
+        --dot-color: rgba(255, 255, 255, 0.05);
+        --glass: rgba(30, 30, 30, 0.9);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --glass-shadow: rgba(0, 0, 0, 0.3);
+        --accent: #0A84FF;
+        --accent-glow: rgba(10, 132, 255, 0.3);
+        --green: #30D158;
+        --red: #FF453A;
+        --text: #f5f5f7;
+        --text-secondary: rgba(255, 255, 255, 0.6);
+        --text-tertiary: rgba(255, 255, 255, 0.4);
+        --msg-user: #0A84FF;
+        --msg-bot: rgba(255, 255, 255, 0.08);
+        --input-bg: rgba(45, 45, 45, 0.9);
+        --input-border: rgba(255, 255, 255, 0.1);
+        --shortcut-bg: rgba(255, 255, 255, 0.08);
+        --shortcut-border: rgba(255, 255, 255, 0.1);
+      }
+    }
+
+    /* Manual dark mode toggle */
+    [data-theme="dark"] {
+      --bg: #0a0a0a;
+      --dot-color: rgba(255, 255, 255, 0.05);
+      --glass: rgba(30, 30, 30, 0.9);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --glass-shadow: rgba(0, 0, 0, 0.3);
+      --accent: #0A84FF;
+      --accent-glow: rgba(10, 132, 255, 0.3);
+      --green: #30D158;
+      --red: #FF453A;
+      --text: #f5f5f7;
+      --text-secondary: rgba(255, 255, 255, 0.6);
+      --text-tertiary: rgba(255, 255, 255, 0.4);
+      --msg-user: #0A84FF;
+      --msg-bot: rgba(255, 255, 255, 0.08);
+      --input-bg: rgba(45, 45, 45, 0.9);
+      --input-border: rgba(255, 255, 255, 0.1);
+      --shortcut-bg: rgba(255, 255, 255, 0.08);
+      --shortcut-border: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Manual light mode toggle */
+    [data-theme="light"] {
+      --bg: #f5f5f7;
+      --dot-color: rgba(0, 0, 0, 0.08);
+      --glass: rgba(255, 255, 255, 0.85);
+      --glass-border: rgba(0, 0, 0, 0.08);
+      --glass-shadow: rgba(0, 0, 0, 0.1);
+      --accent: #007AFF;
+      --accent-glow: rgba(0, 122, 255, 0.3);
+      --green: #34C759;
+      --red: #FF3B30;
+      --text: #1c1c1e;
+      --text-secondary: rgba(0, 0, 0, 0.5);
+      --text-tertiary: rgba(0, 0, 0, 0.35);
+      --msg-user: #007AFF;
+      --msg-bot: rgba(0, 0, 0, 0.05);
+      --input-bg: rgba(255, 255, 255, 0.9);
+      --input-border: rgba(0, 0, 0, 0.1);
+      --shortcut-bg: rgba(0, 0, 0, 0.05);
+      --shortcut-border: rgba(0, 0, 0, 0.1);
     }
 
     html, body { 
@@ -99,18 +171,18 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* User messages - right aligned, darker grey */
+    /* User messages - right aligned */
     #voice-content .voice-msg.user {
       align-self: flex-end;
-      background: rgba(255, 255, 255, 0.08);
-      color: #b0b0b0;
+      background: var(--msg-bot);
+      color: var(--text-secondary);
     }
 
-    /* Assistant messages - left aligned, lighter grey */
+    /* Assistant messages - left aligned */
     #voice-content .voice-msg.assistant {
       align-self: flex-start;
-      background: rgba(255, 255, 255, 0.04);
-      color: #d0d0d0;
+      background: var(--glass);
+      color: var(--text);
     }
     
     /* Thinking/processing state */
@@ -234,7 +306,7 @@
     .msg.bot p:last-child { margin-bottom: 0; }
     .msg.bot strong { font-weight: 600; }
     .msg.bot code {
-      background: rgba(0, 0, 0, 0.06);
+      background: var(--msg-bot);
       padding: 2px 6px;
       border-radius: 4px;
     }
@@ -393,7 +465,7 @@
 
     .shortcut:active {
       transform: scale(0.96);
-      background: rgba(0, 0, 0, 0.05);
+      background: var(--shortcut-bg);
     }
 
     /* Bottom nav - three separate elements */
@@ -420,7 +492,7 @@
       left: 0;
       right: 0;
       height: 120px;
-      background: linear-gradient(to top, rgba(245, 245, 247, 0.95) 0%, rgba(245, 245, 247, 0.8) 50%, rgba(245, 245, 247, 0) 100%);
+      background: linear-gradient(to top, var(--bg) 0%, color-mix(in srgb, var(--bg) 80%, transparent) 50%, transparent 100%);
       pointer-events: none;
       z-index: -1;
     }
@@ -980,6 +1052,54 @@
     #messages::-webkit-scrollbar { width: 0; }
 
     /* Chat history button */
+    /* Theme toggle button */
+    #theme-btn {
+      position: fixed;
+      top: 16px;
+      right: 70px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 2px 12px var(--glass-shadow);
+      cursor: pointer;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #theme-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    #theme-btn .moon { display: none; }
+    [data-theme="dark"] #theme-btn .sun { display: none; }
+    [data-theme="dark"] #theme-btn .moon { display: block; }
+
+    @media (prefers-color-scheme: dark) {
+      #theme-btn .sun { display: none; }
+      #theme-btn .moon { display: block; }
+    }
+    [data-theme="light"] #theme-btn .sun { display: block; }
+    [data-theme="light"] #theme-btn .moon { display: none; }
+
+    #theme-btn:active { transform: scale(0.95); }
+
+    /* Hide theme button in voice/notes mode */
+    body.voice-mode #theme-btn,
+    body.notes-mode #theme-btn {
+      display: none !important;
+    }
+
     #history-btn {
       position: fixed;
       top: 16px;
@@ -1116,7 +1236,7 @@
     }
 
     .session-item:active {
-      background: rgba(0, 0, 0, 0.05);
+      background: var(--shortcut-bg);
     }
 
     .session-item .channel {
@@ -1178,6 +1298,20 @@
   </style>
 </head>
 <body>
+  <!-- Theme toggle button -->
+  <button id="theme-btn" title="Toggle theme">
+    <svg class="sun" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+    <svg class="moon" viewBox="0 0 24 24">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  </button>
+
   <!-- History button -->
   <button id="history-btn" title="Chat History">
     <svg viewBox="0 0 24 24">
