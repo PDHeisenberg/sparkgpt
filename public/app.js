@@ -91,6 +91,8 @@ let mediaStream = null;
 function showIntroPage() {
   console.log('showIntroPage called');
   pageState = 'intro';
+  // Remove chatfeed mode from body
+  document.body.classList.remove('chatfeed-mode');
   // Show welcome
   if (welcomeEl) welcomeEl.style.display = '';
   // Clear messages (but keep welcome)
@@ -112,6 +114,8 @@ function showIntroPage() {
 function showChatFeedPage() {
   console.log('showChatFeedPage called');
   pageState = 'chatfeed';
+  // Add chatfeed mode to body (hides header buttons)
+  document.body.classList.add('chatfeed-mode');
   // Hide welcome
   if (welcomeEl) welcomeEl.style.display = 'none';
   // Hide history button
@@ -1247,6 +1251,48 @@ menuDelete?.addEventListener('click', () => {
 
 // Initialize WebSocket connection
 connect();
+
+// ============================================================================
+// PREVENT DOUBLE-TAP ZOOM (iOS Safari fix)
+// ============================================================================
+
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 300) {
+    e.preventDefault();
+  }
+  lastTouchEnd = now;
+}, { passive: false });
+
+// ============================================================================
+// PC STATUS INDICATOR
+// ============================================================================
+
+const pcStatusEl = document.getElementById('pc-status');
+
+async function checkPcStatus() {
+  try {
+    const response = await fetch('/api/nodes/status');
+    const data = await response.json();
+    
+    if (pcStatusEl) {
+      pcStatusEl.classList.toggle('connected', data.connected);
+      pcStatusEl.title = data.connected 
+        ? `${data.nodeName || 'PC'} connected` 
+        : 'PC disconnected';
+    }
+  } catch (e) {
+    console.error('PC status check failed:', e);
+    if (pcStatusEl) {
+      pcStatusEl.classList.remove('connected');
+    }
+  }
+}
+
+// Check immediately and then every 30 seconds
+checkPcStatus();
+setInterval(checkPcStatus, 30000);
 
 // Keyboard detection
 if (window.visualViewport) {

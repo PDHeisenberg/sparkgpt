@@ -10,6 +10,7 @@ import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import express from 'express';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { TTSProvider } from './providers/tts.js';
@@ -391,6 +392,34 @@ app.get('/api/messages/all', async (req, res) => {
   } catch (e) {
     console.error('All messages fetch error:', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Node status endpoint - check if PC is connected
+const CLAWDBOT_PATH = '/home/heisenberg/.npm-global/bin/clawdbot';
+
+app.get('/api/nodes/status', async (req, res) => {
+  try {
+    // Use clawdbot CLI to get node status
+    const output = execSync(`${CLAWDBOT_PATH} nodes status --json`, { 
+      encoding: 'utf8',
+      timeout: 5000 
+    });
+    
+    const data = JSON.parse(output);
+    const nodes = data.nodes || [];
+    
+    // Find Parth's PC node
+    const pcNode = nodes.find(n => n.displayName?.includes('PC') || n.platform === 'win32');
+    
+    res.json({
+      connected: pcNode?.connected || false,
+      nodeName: pcNode?.displayName || null,
+      platform: pcNode?.platform || null,
+    });
+  } catch (e) {
+    console.error('Node status error:', e.message);
+    res.json({ connected: false, error: e.message });
   }
 });
 
