@@ -1635,7 +1635,7 @@ function showDevTeamModal() {
   `;
   
   modal.innerHTML = `
-    <h2 style="margin: 0 0 8px 0; font-size: 20px;">🛠️ Dev Team</h2>
+    <h2 style="margin: 0 0 8px 0; font-size: 20px;">Dev Team</h2>
     <p style="margin: 0 0 16px 0; color: var(--text-muted, #888); font-size: 14px; line-height: 1.5;">
       Engineer + QA working together. Engineer implements fixes one by one, 
       QA reviews each commit. If QA rejects, Engineer fixes and resubmits. 
@@ -1655,7 +1655,7 @@ function showDevTeamModal() {
       <button id="devteam-start" style="flex: 2; padding: 12px; border-radius: 8px;
         background: #4a9eff; color: #fff; border: none; cursor: pointer; 
         font-size: 14px; font-weight: 600;">
-        🚀 Start Dev Team
+        Start Dev Team
       </button>
     </div>
   `;
@@ -1751,7 +1751,7 @@ function showResearcherModal() {
   `;
   
   modal.innerHTML = `
-    <h2 style="margin: 0 0 8px 0; font-size: 20px;">🔬 Deep Research</h2>
+    <h2 style="margin: 0 0 8px 0; font-size: 20px;">Deep Research</h2>
     <p style="margin: 0 0 16px 0; color: var(--text-muted, #888); font-size: 14px; line-height: 1.5;">
       I'll ask you some clarifying questions, then spawn a research agent that will:
       • Search multiple sources (web, Reddit, Twitter/X, academic)
@@ -1775,7 +1775,7 @@ e.g., 'AI chip competition between NVIDIA and AMD'
       <button id="researcher-start" style="flex: 2; padding: 12px; border-radius: 8px;
         background: #4a9eff; color: #fff; border: none; cursor: pointer; 
         font-size: 14px; font-weight: 600;">
-        🚀 Start Research
+        Start Research
       </button>
     </div>
   `;
@@ -1801,7 +1801,7 @@ e.g., 'AI chip competition between NVIDIA and AMD'
     overlay.remove();
     
     // Send to main agent for Q&A scoping
-    const researchRequest = `🔬 RESEARCH REQUEST
+    const researchRequest = `RESEARCH REQUEST
 
 TOPIC: ${topic}
 
