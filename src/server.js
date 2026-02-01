@@ -947,7 +947,10 @@ async function chat(history, model, mode, hasImage = false) {
     body.thinking = { type: 'enabled', budget_tokens: 2000 };
   }
 
-  // No timeout - let Claude take as long as needed
+  // 2 minute timeout to prevent infinite hangs
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  
   try {
     const jsonBody = JSON.stringify(body);
     const bodySize = Buffer.byteLength(jsonBody);
@@ -960,7 +963,10 @@ async function chat(history, model, mode, hasImage = false) {
         'Authorization': `Bearer ${GATEWAY_TOKEN}`,
       },
       body: jsonBody,
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const err = await response.text();
@@ -971,6 +977,11 @@ async function chat(history, model, mode, hasImage = false) {
     const data = await response.json();
     return data.choices?.[0]?.message?.content || 'No response';
   } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      console.error('Chat request timed out after 2 minutes');
+      throw new Error('Request timed out after 2 minutes');
+    }
     console.error('Chat fetch error:', e.message, e.cause || '');
     throw new Error(`Chat failed: ${e.message}`);
   }
