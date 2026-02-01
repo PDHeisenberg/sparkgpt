@@ -76,8 +76,8 @@ function updateSparkPillText() {
   // Count sub-agents (sessions that aren't main)
   const subAgentCount = (activeSessionsData.sessions || []).filter(s => s.isSubagent).length;
   
-  // Green outline when active (processing or has sessions)
-  if (isProcessing || activeSessionsData.count > 0) {
+  // Green outline ONLY when processing OR sub-agents running
+  if (isProcessing || subAgentCount > 0) {
     sparkStatusEl.classList.add('active');
   } else {
     sparkStatusEl.classList.remove('active');
@@ -104,16 +104,16 @@ sparkStatusEl?.addEventListener('click', () => {
 
 function getSessionDescription(s) {
   if (s.isMain) {
-    return isProcessing ? 'Processing your request...' : 'Ready';
+    return isProcessing ? 'Processing...' : 'Idle';
   }
   if (s.isSubagent) {
     // Extract task from label
-    if (s.label?.includes('engineer')) return 'Engineering task';
-    if (s.label?.includes('qa')) return 'QA review';
-    if (s.label?.includes('dev')) return 'Dev team workflow';
-    return 'Background task';
+    if (s.label?.includes('engineer')) return 'Implementing fixes...';
+    if (s.label?.includes('qa')) return 'Reviewing code...';
+    if (s.label?.includes('dev')) return 'Running dev workflow...';
+    return 'Working...';
   }
-  return 'Active';
+  return '';
 }
 
 function getSessionIcon(s) {
