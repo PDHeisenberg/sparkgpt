@@ -515,36 +515,6 @@ app.get('/api/active-sessions', async (req, res) => {
 });
 
 // Fetch today's reports from session messages (briefings sent to user)
-// Get main session history from Clawdbot gateway
-app.get('/api/session/main/history', async (req, res) => {
-  try {
-    const response = await fetch(`${GATEWAY_URL}/api/sessions/agent:main:main/history?limit=100`, {
-      headers: {
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Gateway returned ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    // Format messages for frontend
-    const messages = (data.messages || []).map(msg => ({
-      role: msg.role,
-      text: extractTextFromContent(msg.content),
-      timestamp: msg.timestamp || Date.now()
-    })).filter(m => m.text); // Remove empty messages
-    
-    res.json({ messages });
-  } catch (error) {
-    console.error('Failed to fetch main session history:', error);
-    res.status(500).json({ error: 'Failed to load history' });
-  }
-});
-
 app.get('/api/reports/today', async (req, res) => {
   try {
     const today = new Date();

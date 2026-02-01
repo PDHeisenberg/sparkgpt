@@ -277,7 +277,7 @@ function showIntroPage() {
   }
 }
 
-async function showChatFeedPage() {
+function showChatFeedPage() {
   console.log('showChatFeedPage called');
   pageState = 'chatfeed';
   // Add chatfeed mode to body (hides header buttons)
@@ -296,28 +296,34 @@ async function showChatFeedPage() {
     closeBtn.style.opacity = '1';
     closeBtn.style.pointerEvents = 'auto';
   }
-  
-  // Load conversation history if not already loaded
-  // Only load once per page load - messages persist when going back to intro
-  const hasMessages = messagesEl && messagesEl.querySelectorAll('.msg:not(.system)').length > 0;
-  if (!hasMessages) {
-    await loadMainSessionHistory();
-  }
 }
 
-async function loadMainSessionHistory() {
+// History button - load all messages and switch to chat feed
+historyBtn?.addEventListener('click', async () => {
+  showChatFeedPage();
+  
+  // Show loading
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'msg system';
+  loadingEl.textContent = 'Loading...';
+  messagesEl.appendChild(loadingEl);
+  
   try {
-    const response = await fetch('/api/session/main/history');
-    if (!response.ok) throw new Error('Failed to fetch history');
-    
+    const response = await fetch('/api/messages/all');
     const data = await response.json();
     
+    // Remove loading
+    loadingEl.remove();
+    
     if (!data.messages?.length) {
-      console.log('No history to load');
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'msg system';
+      emptyEl.textContent = 'No chat history yet';
+      messagesEl.appendChild(emptyEl);
       return;
     }
     
-    // Display all messages from history
+    // Display all messages
     data.messages.forEach(m => {
       const el = document.createElement('div');
       el.className = `msg ${m.role === 'user' ? 'user' : 'bot'}`;
@@ -331,18 +337,11 @@ async function loadMainSessionHistory() {
     
     // Scroll to bottom
     messagesEl.scrollTop = messagesEl.scrollHeight;
-    console.log(`✅ Loaded ${data.messages.length} messages from main session`);
     
   } catch (e) {
-    console.error('Failed to load main session history:', e);
-    // Don't show error to user, just log it
+    loadingEl.textContent = 'Failed to load history';
+    console.error('Failed to load messages:', e);
   }
-}
-
-// History button - load all messages and switch to chat feed
-historyBtn?.addEventListener('click', async () => {
-  await showChatFeedPage();
-  // History is now loaded automatically in showChatFeedPage
 });
 
 // Close button - go back to intro
@@ -1252,8 +1251,7 @@ deleteNotesBtn?.addEventListener('click', discardRecording);
 // ============================================================================
 
 // Session persistence
-// Force use of main session for unified context across WhatsApp and Portal
-let chatSessionId = 'agent:main:main';
+let chatSessionId = localStorage.getItem('spark_session_id');
 
 function connect() {
   // Build URL with session ID for reconnection
@@ -1302,8 +1300,12 @@ function send(text, sendMode) {
 function handle(data) {
   switch (data.type) {
     case 'ready': 
-      // Session is forced to main, no need to store
-      console.log('📋 Session: agent:main:main (unified)');
+      // Store session ID for reconnection
+      if (data.sessionId) {
+        chatSessionId = data.sessionId;
+        localStorage.setItem('spark_session_id', data.sessionId);
+        console.log('📋 Session:', data.sessionId);
+      }
       // Check if there's a pending request
       if (data.pending) {
         console.log('⏳ Pending request detected - showing loading');
