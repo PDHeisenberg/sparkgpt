@@ -130,24 +130,24 @@ function updateSessionsPopupContent(popup) {
   
   if (subAgents.length === 0) {
     popup.innerHTML = `
-      <div style="color: var(--text-muted); font-size: 14px;">
+      <div style="color: var(--text-secondary); font-size: 14px;">
         No background tasks running
       </div>
     `;
   } else {
     popup.innerHTML = `
-      <div style="font-weight: 600; margin-bottom: 12px; font-size: 14px; color: var(--text-primary);">
+      <div style="font-weight: 600; margin-bottom: 12px; font-size: 14px; color: var(--text);">
         Background Tasks (${subAgents.length})
       </div>
       ${subAgents.map(s => `
-        <div style="padding: 10px; background: var(--bg-input, #2a2a2a); 
+        <div style="padding: 10px; background: var(--input-bg); 
           border-radius: 8px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px;">
           <div style="opacity: 0.6; margin-top: 2px;">${getSessionIcon(s)}</div>
           <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 500; font-size: 13px; color: var(--text-primary);">
+            <div style="font-weight: 500; font-size: 13px; color: var(--text);">
               ${s.label || 'Task'}
             </div>
-            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
               ${getSessionDescription(s)}
             </div>
           </div>
@@ -165,9 +165,9 @@ function showSessionsPopup() {
   popup.id = 'sessions-popup';
   popup.style.cssText = `
     position: fixed; top: 70px; left: 16px;
-    background: var(--bg-card, #1a1a1a); border-radius: 12px;
+    background: var(--glass); border-radius: 12px;
     padding: 16px; min-width: 260px; max-width: 320px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 40px var(--glass-shadow);
     border: 1px solid var(--glass-border);
     z-index: 1000;
   `;
@@ -1629,31 +1629,32 @@ function showDevTeamModal() {
   
   const modal = document.createElement('div');
   modal.style.cssText = `
-    background: var(--bg-card, #1a1a1a); border-radius: 16px;
+    background: var(--glass); border-radius: 16px;
     padding: 24px; max-width: 500px; width: 100%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    box-shadow: 0 20px 60px var(--glass-shadow);
+    border: 1px solid var(--glass-border);
   `;
   
   modal.innerHTML = `
-    <h2 style="margin: 0 0 8px 0; font-size: 20px;">Dev Team</h2>
-    <p style="margin: 0 0 16px 0; color: var(--text-muted, #888); font-size: 14px; line-height: 1.5;">
+    <h2 style="margin: 0 0 8px 0; font-size: 20px; color: var(--text);">Dev Team</h2>
+    <p style="margin: 0 0 16px 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5;">
       Engineer + QA working together. Engineer implements fixes one by one, 
       QA reviews each commit. If QA rejects, Engineer fixes and resubmits. 
       Continues until all tasks are approved.
     </p>
     <textarea id="devteam-task" placeholder="Describe the task or list of issues to fix..." 
       style="width: 100%; height: 120px; padding: 12px; border-radius: 8px; 
-      background: var(--bg-input, #2a2a2a); color: var(--text-primary, #fff);
-      border: 1px solid var(--border, #333); font-size: 14px; resize: none;
+      background: var(--input-bg); color: var(--text);
+      border: 1px solid var(--input-border); font-size: 14px; resize: none;
       font-family: inherit;"></textarea>
     <div style="display: flex; gap: 12px; margin-top: 16px;">
       <button id="devteam-cancel" style="flex: 1; padding: 12px; border-radius: 8px;
-        background: var(--bg-input, #2a2a2a); color: var(--text-primary, #fff);
-        border: 1px solid var(--border, #333); cursor: pointer; font-size: 14px;">
+        background: var(--input-bg); color: var(--text);
+        border: 1px solid var(--input-border); cursor: pointer; font-size: 14px;">
         Cancel
       </button>
       <button id="devteam-start" style="flex: 2; padding: 12px; border-radius: 8px;
-        background: #4a9eff; color: #fff; border: none; cursor: pointer; 
+        background: var(--accent); color: white; border: none; cursor: pointer; 
         font-size: 14px; font-weight: 600;">
         Start Dev Team
       </button>
@@ -1745,14 +1746,15 @@ function showResearcherModal() {
   
   const modal = document.createElement('div');
   modal.style.cssText = `
-    background: var(--bg-card, #1a1a1a); border-radius: 16px;
+    background: var(--glass); border-radius: 16px;
     padding: 24px; max-width: 500px; width: 100%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    box-shadow: 0 20px 60px var(--glass-shadow);
+    border: 1px solid var(--glass-border);
   `;
   
   modal.innerHTML = `
-    <h2 style="margin: 0 0 8px 0; font-size: 20px;">Deep Research</h2>
-    <p style="margin: 0 0 16px 0; color: var(--text-muted, #888); font-size: 14px; line-height: 1.5;">
+    <h2 style="margin: 0 0 8px 0; font-size: 20px; color: var(--text);">Deep Research</h2>
+    <p style="margin: 0 0 16px 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5;">
       I'll ask you some clarifying questions, then spawn a research agent that will:
       • Search multiple sources (web, Reddit, Twitter/X, academic)
       • Apply deep analysis (conjecture + criticism)
@@ -1763,17 +1765,17 @@ e.g., 'AI chip competition between NVIDIA and AMD'
       'Impact of Fed policy on emerging markets'
       'Latest developments in fusion energy'..." 
       style="width: 100%; height: 140px; padding: 12px; border-radius: 8px; 
-      background: var(--bg-input, #2a2a2a); color: var(--text-primary, #fff);
-      border: 1px solid var(--border, #333); font-size: 14px; resize: none;
+      background: var(--input-bg); color: var(--text);
+      border: 1px solid var(--input-border); font-size: 14px; resize: none;
       font-family: inherit;"></textarea>
     <div style="display: flex; gap: 12px; margin-top: 16px;">
       <button id="researcher-cancel" style="flex: 1; padding: 12px; border-radius: 8px;
-        background: var(--bg-input, #2a2a2a); color: var(--text-primary, #fff);
-        border: 1px solid var(--border, #333); cursor: pointer; font-size: 14px;">
+        background: var(--input-bg); color: var(--text);
+        border: 1px solid var(--input-border); cursor: pointer; font-size: 14px;">
         Cancel
       </button>
       <button id="researcher-start" style="flex: 2; padding: 12px; border-radius: 8px;
-        background: #4a9eff; color: #fff; border: none; cursor: pointer; 
+        background: var(--accent); color: white; border: none; cursor: pointer; 
         font-size: 14px; font-weight: 600;">
         Start Research
       </button>
