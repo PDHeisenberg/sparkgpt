@@ -75,6 +75,8 @@ let mode = 'chat';
 let pageState = 'intro'; // 'intro' or 'chatfeed'
 // Realtime voice state is defined in the REALTIME VOICE MODE section
 let isListening = false;
+let realtimeReconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 let isProcessing = false;
 let audioContext = null;
 let currentAudio = null;
@@ -691,6 +693,7 @@ function connectRealtime() {
   realtimeWs = new WebSocket(url);
   
   realtimeWs.onopen = async () => {
+    realtimeReconnectAttempts = 0;
     console.log('✅ Realtime connected');
     setStatus('');
     
@@ -712,15 +715,19 @@ function connectRealtime() {
   
   realtimeWs.onclose = () => {
     console.log('🔌 Realtime disconnected');
-    if (isListening) {
-      setStatus('Reconnecting...');
-      setTimeout(connectRealtime, 2000);
+    if (isListening && realtimeReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      const delay = Math.min(2000 * Math.pow(2, realtimeReconnectAttempts), 30000);
+      realtimeReconnectAttempts++;
+      setStatus(`Reconnecting (${realtimeReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+      setTimeout(connectRealtime, delay);
+    } else if (realtimeReconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      toast('Voice connection failed. Please try again.', true);
+      stopVoice();
     }
   };
   
   realtimeWs.onerror = (e) => {
     console.error('Realtime WebSocket error:', e);
-    setStatus('Connection error');
   };
 }
 
