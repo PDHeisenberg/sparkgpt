@@ -398,6 +398,60 @@ app.get('/api/messages/all', async (req, res) => {
 // Node status endpoint - check if PC is connected
 const CLAWDBOT_PATH = '/home/heisenberg/.npm-global/bin/clawdbot';
 
+// Wake-on-LAN config
+const PC_MAC_ADDRESS = '8C:86:DD:61:3D:16';
+
+// Wake-on-LAN endpoint
+import dgram from 'dgram';
+
+app.post('/api/nodes/wake', async (req, res) => {
+  try {
+    // Create magic packet
+    const mac = PC_MAC_ADDRESS.replace(/[:-]/g, '');
+    const macBuffer = Buffer.from(mac, 'hex');
+    
+    // Magic packet: 6 bytes of 0xFF + MAC repeated 16 times
+    const magicPacket = Buffer.alloc(102);
+    
+    // First 6 bytes = 0xFF
+    for (let i = 0; i < 6; i++) {
+      magicPacket[i] = 0xFF;
+    }
+    
+    // Repeat MAC 16 times
+    for (let i = 0; i < 16; i++) {
+      macBuffer.copy(magicPacket, 6 + i * 6);
+    }
+    
+    // Send UDP broadcast
+    const socket = dgram.createSocket('udp4');
+    
+    socket.on('error', (err) => {
+      console.error('WoL socket error:', err);
+      socket.close();
+    });
+    
+    socket.bind(() => {
+      socket.setBroadcast(true);
+      
+      // Send to broadcast address on port 9
+      socket.send(magicPacket, 0, magicPacket.length, 9, '255.255.255.255', (err) => {
+        if (err) {
+          console.error('WoL send error:', err);
+          res.json({ success: false, error: err.message });
+        } else {
+          console.log(`🔌 WoL packet sent to ${PC_MAC_ADDRESS}`);
+          res.json({ success: true, mac: PC_MAC_ADDRESS });
+        }
+        socket.close();
+      });
+    });
+  } catch (e) {
+    console.error('WoL error:', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
 app.get('/api/nodes/status', async (req, res) => {
   try {
     // Use clawdbot CLI to get node status

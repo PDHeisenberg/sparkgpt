@@ -563,15 +563,42 @@ function stopWaveAnimation() {
 // Start audio capture and streaming
 async function startAudioCapture() {
   try {
+    // Check if getUserMedia is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('Microphone not supported in this browser', true);
+      return false;
+    }
+    
     realtimeAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-    realtimeMediaStream = await navigator.mediaDevices.getUserMedia({ 
-      audio: { 
-        sampleRate: 24000,
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true
-      } 
-    });
+    
+    // Request microphone access with specific error handling
+    try {
+      realtimeMediaStream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          sampleRate: 24000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true
+        } 
+      });
+    } catch (micError) {
+      // Specific error handling for microphone access
+      if (micError.name === 'NotAllowedError') {
+        toast('Microphone permission denied. Please allow access.', true);
+      } else if (micError.name === 'NotFoundError') {
+        toast('No microphone found', true);
+      } else {
+        toast('Microphone error: ' + micError.message, true);
+      }
+      console.error('Microphone access error:', micError);
+      
+      // Clean up audio context on failure
+      if (realtimeAudioContext) {
+        realtimeAudioContext.close().catch(() => {});
+        realtimeAudioContext = null;
+      }
+      return false;
+    }
     
     const source = realtimeAudioContext.createMediaStreamSource(realtimeMediaStream);
     
@@ -613,7 +640,12 @@ async function startAudioCapture() {
     return true;
   } catch (e) {
     console.error('Audio capture error:', e);
-    toast('Microphone access denied', true);
+    toast('Audio initialization failed: ' + e.message, true);
+    // Clean up on any unexpected error
+    if (realtimeAudioContext) {
+      realtimeAudioContext.close().catch(() => {});
+      realtimeAudioContext = null;
+    }
     return false;
   }
 }
@@ -1292,7 +1324,50 @@ async function checkPcStatus() {
 
 // Check immediately and then every 30 seconds
 checkPcStatus();
-setInterval(checkPcStatus, 30000);
+let statusInterval = setInterval(checkPcStatus, 30000);
+
+// Click handler for WoL
+pcStatusEl?.addEventListener('click', async () => {
+  // Only wake if disconnected
+  if (pcStatusEl.classList.contains('connected')) {
+    toast('PC is already connected');
+    return;
+  }
+  
+  toast('Waking PC...');
+  
+  try {
+    const response = await fetch('/api/nodes/wake', { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.success) {
+      toast('Wake signal sent! Waiting for PC...');
+      
+      // Poll more frequently for 2 minutes
+      clearInterval(statusInterval);
+      let attempts = 0;
+      const fastPoll = setInterval(async () => {
+        attempts++;
+        await checkPcStatus();
+        
+        if (pcStatusEl.classList.contains('connected')) {
+          toast('PC connected! ✅');
+          clearInterval(fastPoll);
+          statusInterval = setInterval(checkPcStatus, 30000);
+        } else if (attempts >= 24) { // 2 minutes (24 * 5s)
+          toast('PC did not respond', true);
+          clearInterval(fastPoll);
+          statusInterval = setInterval(checkPcStatus, 30000);
+        }
+      }, 5000);
+    } else {
+      toast('Wake failed: ' + (data.error || 'Unknown error'), true);
+    }
+  } catch (e) {
+    toast('Wake request failed', true);
+    console.error('WoL error:', e);
+  }
+});
 
 // Keyboard detection
 if (window.visualViewport) {
