@@ -1617,27 +1617,26 @@ document.getElementById('devteam-btn')?.addEventListener('click', () => {
 });
 
 function showDevTeamModal() {
-  // Create bottom sheet overlay
+  // Create modal overlay
   const overlay = document.createElement('div');
   overlay.id = 'devteam-modal';
   overlay.style.cssText = `
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.4); z-index: 9999;
-    display: flex; align-items: flex-end; justify-content: center;
+    background: rgba(0,0,0,0.5); z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
     animation: fadeIn 0.2s ease-out;
   `;
   
   const modal = document.createElement('div');
   modal.style.cssText = `
-    background: var(--bg); 
-    border-radius: 24px 24px 0 0;
-    padding: 24px; 
+    background: var(--bg);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 500px;
     width: 100%;
-    max-width: 600px;
-    max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
-    animation: slideUp 0.3s ease-out;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    border: 1px solid var(--input-border);
   `;
   
   modal.innerHTML = `
@@ -1739,27 +1738,26 @@ document.getElementById('researcher-btn')?.addEventListener('click', () => {
 });
 
 function showResearcherModal() {
-  // Create bottom sheet overlay
+  // Create modal overlay
   const overlay = document.createElement('div');
   overlay.id = 'researcher-modal';
   overlay.style.cssText = `
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.4); z-index: 9999;
-    display: flex; align-items: flex-end; justify-content: center;
+    background: rgba(0,0,0,0.5); z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
     animation: fadeIn 0.2s ease-out;
   `;
   
   const modal = document.createElement('div');
   modal.style.cssText = `
     background: var(--bg);
-    border-radius: 24px 24px 0 0;
+    border-radius: 16px;
     padding: 24px;
+    max-width: 500px;
     width: 100%;
-    max-width: 600px;
-    max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
-    animation: slideUp 0.3s ease-out;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    border: 1px solid var(--input-border);
   `;
   
   modal.innerHTML = `
