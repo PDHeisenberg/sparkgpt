@@ -415,6 +415,11 @@ export function handleHybridRealtimeSession(clientWs) {
   // Cleanup on client disconnect
   clientWs.on('close', () => {
     console.log('🔌 Client disconnected');
+    // Clear speaking timeout to prevent memory leak / stale callback
+    if (speakingTimeout) {
+      clearTimeout(speakingTimeout);
+      speakingTimeout = null;
+    }
     if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
       openaiWs.close();
     }
