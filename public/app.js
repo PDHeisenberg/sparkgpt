@@ -1449,6 +1449,56 @@ document.getElementById('articulations-btn')?.addEventListener('click', () => {
   textInput?.focus();
 });
 
+// Engineer Agent button
+document.getElementById('engineer-btn')?.addEventListener('click', () => {
+  const task = prompt('🔧 Engineer Agent\n\nDescribe the coding task:');
+  if (task && task.trim()) {
+    const engineerPrompt = `Spawn an engineer agent with these instructions:
+
+TASK: ${task.trim()}
+
+ENGINEER AGENT INSTRUCTIONS:
+- You are a skilled software engineer
+- Work in /home/heisenberg/clawd/spark-voice codebase
+- Read relevant files before making changes
+- Make minimal, focused changes
+- Test that code is syntactically correct
+- Commit each fix with descriptive message: "fix: [description]"
+- Report back with commit hash and summary of changes
+- If task has multiple parts, do them sequentially, one at a time
+
+Start working on the task now.`;
+    
+    showChatFeedPage();
+    send(engineerPrompt, 'chat');
+  }
+});
+
+// QA Agent button
+document.getElementById('qa-btn')?.addEventListener('click', () => {
+  const scope = prompt('🔍 QA Review Agent\n\nWhat should be reviewed?\n(e.g., "recent commits", "whole codebase", "security")');
+  if (scope && scope.trim()) {
+    const qaPrompt = `Spawn a QA review agent with these instructions:
+
+SCOPE: ${scope.trim()}
+
+QA AGENT INSTRUCTIONS:
+- You are a thorough QA engineer
+- Review code in /home/heisenberg/clawd/spark-voice
+- Check for: bugs, edge cases, memory leaks, security issues, code quality
+- For each issue found, note: severity, location, problem, suggested fix
+- Categorize issues: Critical, High, Medium, Low
+- Provide effort estimates for fixes
+- Generate a structured report
+- If reviewing commits, use git log and git diff
+
+Start the review now.`;
+    
+    showChatFeedPage();
+    send(qaPrompt, 'chat');
+  }
+});
+
 // Override send for articulations mode
 const originalSend = send;
 send = function(text, sendMode) {
