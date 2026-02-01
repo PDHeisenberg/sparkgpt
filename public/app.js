@@ -1362,7 +1362,15 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // Click handler for WoL
+let fastPoll = null; // Track fast polling interval to prevent stacking
+
 pcStatusEl?.addEventListener('click', async () => {
+  // Clear any existing fast poll first to prevent stacking
+  if (fastPoll) {
+    clearInterval(fastPoll);
+    fastPoll = null;
+  }
+  
   // Only wake if disconnected
   if (pcStatusEl.classList.contains('connected')) {
     toast('PC is already connected');
@@ -1381,7 +1389,7 @@ pcStatusEl?.addEventListener('click', async () => {
       // Poll more frequently for 2 minutes
       clearInterval(statusInterval);
       let attempts = 0;
-      const fastPoll = setInterval(async () => {
+      fastPoll = setInterval(async () => {
         attempts++;
         await checkPcStatus();
         
