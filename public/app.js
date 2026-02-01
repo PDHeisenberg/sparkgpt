@@ -1345,6 +1345,22 @@ async function checkPcStatus() {
 checkPcStatus();
 let statusInterval = setInterval(checkPcStatus, 30000);
 
+// Pause PC status polling when page is hidden (save battery)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (statusInterval) {
+      clearInterval(statusInterval);
+      statusInterval = null;
+    }
+  } else {
+    // Resume when visible
+    if (!statusInterval) {
+      checkPcStatus();
+      statusInterval = setInterval(checkPcStatus, 30000);
+    }
+  }
+});
+
 // Click handler for WoL
 pcStatusEl?.addEventListener('click', async () => {
   // Only wake if disconnected
