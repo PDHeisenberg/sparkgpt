@@ -480,18 +480,13 @@ app.get('/api/nodes/status', async (req, res) => {
 // Active sessions from Clawdbot gateway (running agents)
 app.get('/api/active-sessions', async (req, res) => {
   try {
-    const response = await fetch(`${GATEWAY_URL}/v1/sessions?limit=20&messageLimit=1`, {
-      headers: {
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-        'Content-Type': 'application/json'
-      }
+    // Use CLI to get sessions (more reliable than HTTP API)
+    const output = execSync(`${CLAWDBOT_PATH} sessions list --json --limit 20`, {
+      encoding: 'utf8',
+      timeout: 5000
     });
     
-    if (!response.ok) {
-      throw new Error(`Gateway error: ${response.status}`);
-    }
-    
-    const data = await response.json();
+    const data = JSON.parse(output);
     const sessions = data.sessions || [];
     
     // Filter to recent active sessions (updated in last 5 minutes)
@@ -500,23 +495,17 @@ app.get('/api/active-sessions', async (req, res) => {
       .filter(s => s.updatedAt > fiveMinutesAgo)
       .map(s => ({
         key: s.key,
-        label: s.label || s.displayName || 'main',
+        label: s.label || (s.key?.includes('subagent') ? s.key.split(':').pop().slice(0, 8) : 'main'),
         kind: s.kind,
         updatedAt: s.updatedAt,
         isMain: s.key === 'agent:main:main',
         isSubagent: s.key?.includes('subagent'),
-        // Get last message preview
-        lastMessage: s.messages?.[0]?.content?.[0]?.text?.slice(0, 100) || null
+        model: s.model
       }));
-    
-    // Count thinking (has recent activity but no completed message)
-    const thinking = activeSessions.some(s => 
-      s.isMain && s.updatedAt > Date.now() - 30000 && !s.lastMessage?.includes('✅')
-    );
     
     res.json({
       count: activeSessions.length,
-      thinking,
+      thinking: false, // Will be set by frontend based on isProcessing
       sessions: activeSessions
     });
   } catch (e) {
