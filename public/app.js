@@ -103,17 +103,13 @@ sparkStatusEl?.addEventListener('click', () => {
 });
 
 function getSessionDescription(s) {
-  if (s.isMain) {
-    return isProcessing ? 'Processing...' : 'Idle';
-  }
-  if (s.isSubagent) {
-    // Extract task from label
-    if (s.label?.includes('engineer')) return 'Implementing fixes...';
-    if (s.label?.includes('qa')) return 'Reviewing code...';
-    if (s.label?.includes('dev')) return 'Running dev workflow...';
-    return 'Working...';
-  }
-  return '';
+  // Extract task type from label
+  const label = (s.label || '').toLowerCase();
+  if (label.includes('engineer')) return 'Implementing fixes...';
+  if (label.includes('qa')) return 'Reviewing code...';
+  if (label.includes('dev')) return 'Running dev workflow...';
+  if (label.includes('test')) return 'Running test...';
+  return 'Working...';
 }
 
 function getSessionIcon(s) {
@@ -129,25 +125,27 @@ function getSessionIcon(s) {
 
 function updateSessionsPopupContent(popup) {
   const sessions = activeSessionsData.sessions || [];
+  // Only show sub-agents (background tasks), not main session
+  const subAgents = sessions.filter(s => s.isSubagent);
   
-  if (sessions.length === 0) {
+  if (subAgents.length === 0) {
     popup.innerHTML = `
       <div style="color: var(--text-muted); font-size: 14px;">
-        No active sessions
+        No background tasks running
       </div>
     `;
   } else {
     popup.innerHTML = `
       <div style="font-weight: 600; margin-bottom: 12px; font-size: 14px; color: var(--text-primary);">
-        Active Sessions
+        Background Tasks (${subAgents.length})
       </div>
-      ${sessions.map(s => `
+      ${subAgents.map(s => `
         <div style="padding: 10px; background: var(--bg-input, #2a2a2a); 
           border-radius: 8px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px;">
           <div style="opacity: 0.6; margin-top: 2px;">${getSessionIcon(s)}</div>
           <div style="flex: 1; min-width: 0;">
             <div style="font-weight: 500; font-size: 13px; color: var(--text-primary);">
-              ${s.isMain ? 'Main Session' : s.label || 'Sub-agent'}
+              ${s.label || 'Task'}
             </div>
             <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
               ${getSessionDescription(s)}
