@@ -1756,7 +1756,7 @@ function showResearcherModal() {
       I'll ask you some clarifying questions, then spawn a research agent that will:
       • Search multiple sources (web, Reddit, Twitter/X, academic)
       • Apply deep analysis (conjecture + criticism)
-      • Publish a comprehensive HTML report to parth-researchbot.netlify.app
+      • Publish a comprehensive HTML report to spark-researchbot.netlify.app
     </p>
     <textarea id="researcher-topic" placeholder="What would you like me to research?
 e.g., 'AI chip competition between NVIDIA and AMD'
