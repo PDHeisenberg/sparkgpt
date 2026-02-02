@@ -354,10 +354,7 @@ function showIntroPage() {
     if (historyBtn) {
       historyBtn.classList.remove('hidden');
     }
-    // Hide close button (class-based only - CSS handles opacity/pointer-events)
-    if (closeBtn) {
-      closeBtn.classList.remove('show');
-    }
+    // Close button removed - overscroll gesture handles return to intro
     // Reset scroll position and set overflow for browsers without :has() support
     if (messagesEl) {
       messagesEl.scrollTop = 0;
@@ -388,10 +385,7 @@ function showChatFeedPage(options = {}) {
     if (historyBtn) {
       historyBtn.classList.add('hidden');
     }
-    // Show close button (class-based only - CSS handles opacity/pointer-events)
-    if (closeBtn) {
-      closeBtn.classList.add('show');
-    }
+    // Close button removed - overscroll gesture handles return to intro
     // Enable scrolling for browsers without :has() support
     if (messagesEl) {
       messagesEl.style.overflow = 'auto';
@@ -425,13 +419,105 @@ historyBtn?.addEventListener('click', async () => {
   }
 });
 
-// Close button - go back to intro
+// Close button - go back to intro (legacy, button now hidden)
 closeBtn?.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
   console.log('Close button clicked');
   showIntroPage();
 });
+
+// ============================================================================
+// CLOSE CHAT BUTTON (shown in chatfeed mode)
+// ============================================================================
+const closeChatBtn = document.getElementById('close-chat-btn');
+
+closeChatBtn?.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  // Add slide-out animation
+  document.body.classList.add('slide-out');
+  setTimeout(() => {
+    document.body.classList.remove('slide-out');
+    showIntroPage();
+  }, 250);
+});
+
+// ============================================================================
+// PULL DOWN TO OPEN CHAT (on intro page)
+// ============================================================================
+const SCROLL_THRESHOLD = 50; // pixels to pull down to trigger
+let introTouchStartY = 0;
+let introScrollTriggered = false;
+
+// Touch detection on messages area (which contains welcome on intro)
+messagesEl?.addEventListener('touchstart', (e) => {
+  if (pageState !== 'intro') return;
+  introTouchStartY = e.touches[0].clientY;
+  introScrollTriggered = false;
+}, { passive: true });
+
+messagesEl?.addEventListener('touchmove', (e) => {
+  if (pageState !== 'intro' || introScrollTriggered) return;
+  
+  const currentY = e.touches[0].clientY;
+  const pullDistance = currentY - introTouchStartY; // positive = finger moved down (pull down gesture)
+  
+  if (pullDistance >= SCROLL_THRESHOLD) {
+    introScrollTriggered = true;
+    openChatWithLoading();
+  }
+}, { passive: true });
+
+// Mouse wheel on intro
+messagesEl?.addEventListener('wheel', (e) => {
+  if (pageState !== 'intro') return;
+  
+  // deltaY < 0 means scrolling up (pull down equivalent)
+  if (e.deltaY < -SCROLL_THRESHOLD) {
+    openChatWithLoading();
+  }
+}, { passive: true });
+
+// Open chat with loading state
+async function openChatWithLoading() {
+  // Show loading indicator
+  showThinking();
+  
+  // Try to load history with timeout
+  try {
+    if (preloadedHistory === null && historyLoadPromise) {
+      // Wait for existing load, but timeout after 3s
+      await Promise.race([
+        historyLoadPromise,
+        new Promise((_, reject) => setTimeout(() => reject('timeout'), 3000))
+      ]);
+    } else if (preloadedHistory === null) {
+      // Force a fresh load with timeout
+      await Promise.race([
+        loadHistoryInBackground(true),
+        new Promise((_, reject) => setTimeout(() => reject('timeout'), 3000))
+      ]);
+    }
+  } catch (e) {
+    console.log('History load timeout or error:', e);
+  }
+  
+  removeThinking();
+  
+  // Add slide-in animation
+  document.body.classList.add('slide-in');
+  showChatFeedPage();
+  setTimeout(() => document.body.classList.remove('slide-in'), 400);
+  
+  // Show message if no history
+  if (!preloadedHistory || preloadedHistory.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'msg system';
+    emptyEl.textContent = 'No chat history yet';
+    messagesEl.appendChild(emptyEl);
+  }
+}
 
 // ============================================================================
 // MESSAGES
@@ -1476,6 +1562,20 @@ function connect() {
       console.error('❌ Chat WebSocket error:', e);
       updateSparkStatus('disconnected');
     };
+    
+    // Reconnect when page becomes visible (fixes mobile Safari background disconnect)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        console.log('👁️ Page visible, checking WebSocket...');
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          console.log('🔄 WebSocket stale, reconnecting...');
+          connect();
+        } else {
+          // Connection looks good, but catch up on any missed messages
+          catchUpMissedMessages();
+        }
+      }
+    });
     ws.onmessage = (e) => { 
       try { 
         const data = JSON.parse(e.data);
@@ -1530,8 +1630,10 @@ async function send(text, sendMode) {
   messagesEl.appendChild(el);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   
+  // Track message to prevent duplicate from sync
+  trackDisplayedMessage(text);
+  
   showThinking();
-  setStatus('Sending...');
   ws.send(JSON.stringify({ type: 'transcript', text, mode: sendMode }));
 }
 
@@ -1548,9 +1650,6 @@ function handle(data) {
       if (data.pending) {
         console.log('⏳ Pending request detected - showing loading');
         showThinking();
-        setStatus('Still thinking...');
-      } else {
-        setStatus('');
       }
       console.log('✅ Chat ready');
       break;
@@ -1607,7 +1706,6 @@ function handle(data) {
       // Server acknowledged request and is processing
       console.log('🤔 Server thinking...');
       showThinking();
-      setStatus('Thinking...');
       break;
     case 'text':
       console.log('✅ Text message received:', data.content?.slice?.(0, 100));
@@ -2079,101 +2177,40 @@ function createBottomSheet({ icon, title, subtitle, placeholder, submitText, onS
   return { close };
 }
 
-// Dev Team Agent button (Engineer + QA combined workflow)
+// Dev Mode button (spawns isolated dev subagent)
 document.getElementById('devteam-btn')?.addEventListener('click', () => {
-  showDevTeamModal();
+  showDevModeModal();
 });
 
-function showDevTeamModal() {
+function showDevModeModal() {
   createBottomSheet({
     icon: '👨‍💻',
-    title: 'Dev Team',
-    subtitle: 'AI pair for coding tasks',
+    title: 'Dev Mode',
+    subtitle: 'Isolated coding session',
     placeholder: 'Describe the task or issues to fix...',
-    submitText: 'Start Dev Team',
+    submitText: 'Start Dev Mode',
     onSubmit: (task) => {
-      const devTeamPrompt = `DEV TEAM REQUEST
-
-You are a Dev Team coordinator. Run an Engineer + QA collaborative workflow.
-
-TASK: ${task}
-
-WORKFLOW:
-1. First, create a backup branch: git checkout -b backup-[timestamp]
-2. Break task into discrete items if multiple issues
-3. For EACH item, do sequentially (not parallel):
-   
-   ENGINEER PHASE:
-   - Read relevant files in /home/heisenberg/clawd/spark-voice
-   - Implement the fix with minimal, focused changes
-   - Test syntax is correct
-   - Commit with message: "fix: [description]"
-   
-   QA PHASE:
-   - Review the commit for correctness, edge cases, regressions
-   - Check for bugs, memory leaks, code quality
-   - If APPROVED: Move to next item
-   - If REJECTED: Tell engineer what to fix, repeat engineer phase
-
-4. After ALL items approved, push to GitHub and provide summary
-
-RULES:
-- One item at a time, sequential not parallel
-- Engineer commits before QA reviews
-- QA must explicitly APPROVE or REJECT each fix
-- Keep user updated on progress
-
-OUTPUT FORMAT:
-After each item: "✅ [item] - APPROVED" or "🔄 [item] - Fixing QA feedback..."
-Final: Summary table of all commits + status
-
-COMPLETION - MANDATORY:
-When ALL tasks are complete, use the message tool to send a WhatsApp notification:
-- action: "send"
-- target: "+6587588470"
-- message: "✅ Dev Team complete!
-
-[Summary of what was fixed/built]
-
-Commits: [list commits]"
-
-Start now.`;
-      
       showChatFeedPage();
-      send(devTeamPrompt, 'chat');
+      send(`/dev ${task}`, 'chat');
     }
   });
 }
 
-// Researcher button (Deep research with Q&A scoping)
+// Research Mode button (spawns isolated research subagent)
 document.getElementById('researcher-btn')?.addEventListener('click', () => {
-  showResearcherModal();
+  showResearchModeModal();
 });
 
-function showResearcherModal() {
+function showResearchModeModal() {
   createBottomSheet({
     icon: '🔬',
     title: 'Research Mode',
-    subtitle: 'Deep research with sources',
+    subtitle: 'Deep research subagent',
     placeholder: 'What would you like me to research?',
     submitText: 'Start Research',
     onSubmit: (topic) => {
-      const researchRequest = `RESEARCH REQUEST
-
-TOPIC: ${topic}
-
-Please ask me clarifying questions to understand:
-- Specific angle/focus area
-- Key questions to answer
-- Depth vs breadth preference
-- Timeframe (recent vs historical)
-- Target audience (technical vs general)
-- Sources to prioritize or avoid
-
-After I answer, spawn a research subagent with the full context.`;
-      
       showChatFeedPage();
-      send(researchRequest, 'chat');
+      send(`/research ${topic}`, 'chat');
     }
   });
 }
