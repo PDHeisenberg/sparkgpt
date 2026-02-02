@@ -1339,7 +1339,7 @@ function send(text, sendMode) {
 function handle(data) {
   switch (data.type) {
     case 'ready': 
-      // Store session ID for reconnection
+      // Store session ID for reconnection (local only, unified session handled server-side)
       if (data.sessionId) {
         chatSessionId = data.sessionId;
         localStorage.setItem('spark_session_id', data.sessionId);
@@ -1354,6 +1354,37 @@ function handle(data) {
         setStatus('');
       }
       console.log('✅ Chat ready');
+      break;
+    
+    case 'sync':
+      // Real-time sync: new message from WhatsApp or other surface
+      console.log('📡 Sync message:', data.message?.source, data.message?.text?.slice(0, 50));
+      if (data.message) {
+        // Show on chat feed if we're viewing it
+        if (pageState === 'chatfeed') {
+          // Check for duplicates (don't add if last message has same text)
+          const lastMsg = messagesEl?.querySelector('.msg:last-child');
+          const lastText = lastMsg?.textContent || lastMsg?.innerText || '';
+          if (lastText !== data.message.text) {
+            const el = document.createElement('div');
+            el.className = `msg ${data.message.role === 'user' ? 'user' : 'bot'}`;
+            if (data.message.role === 'user') {
+              el.textContent = data.message.text;
+            } else {
+              el.innerHTML = formatMessage(data.message.text);
+            }
+            // Add source indicator for WhatsApp messages
+            if (data.message.source === 'whatsapp') {
+              el.title = 'From WhatsApp';
+            }
+            messagesEl.appendChild(el);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          }
+        } else if (pageState === 'intro' && data.message.role === 'bot') {
+          // Show toast notification on intro page for new bot messages
+          toast('New message from Spark');
+        }
+      }
       break;
     case 'thinking':
       // Server acknowledged request and is processing

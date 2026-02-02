@@ -4,6 +4,8 @@
  * Voice Mode: Fast conversational (Haiku)
  * Chat Mode: Deep thinking (Opus), files, links
  * Notes Mode: Record, transcribe, summarize
+ * 
+ * v83 - Session Unification: Spark Portal ↔ WhatsApp share same context
  */
 
 import { WebSocketServer } from 'ws';
@@ -24,6 +26,53 @@ const mammoth = require('mammoth');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
+
+// ============================================================================
+// SESSION UNIFICATION - Feature Flag & Gateway Communication
+// Set UNIFIED_SESSION=false to revert to isolated sessions
+// ============================================================================
+const UNIFIED_SESSION = process.env.UNIFIED_SESSION !== 'false'; // Default: true
+const UNIFIED_GATEWAY_URL = 'http://localhost:18789';
+const UNIFIED_HOOK_TOKEN = 'spark-portal-hook-token-2026';
+const UNIFIED_SESSION_KEY = 'agent:main:main';
+
+console.log(`🔗 Session Unification: ${UNIFIED_SESSION ? 'ENABLED (shared with WhatsApp)' : 'DISABLED (isolated)'}`);
+
+// Send message to main session via gateway webhook
+async function sendToMainSession(text, source = 'Spark Portal') {
+  if (!UNIFIED_SESSION) {
+    return null;
+  }
+  
+  try {
+    const response = await fetch(`${UNIFIED_GATEWAY_URL}/hooks/agent`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${UNIFIED_HOOK_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: text,
+        name: source,
+        sessionKey: UNIFIED_SESSION_KEY,
+        deliver: false,
+        timeoutSeconds: 120
+      })
+    });
+    
+    if (!response.ok) {
+      console.error('Gateway webhook error:', response.status, await response.text());
+      return null;
+    }
+    
+    // Response is the agent's reply
+    const result = await response.json();
+    return result;
+  } catch (e) {
+    console.error('Failed to send to main session:', e.message);
+    return null;
+  }
+}
 
 // Models for different modes
 const MODELS = {
@@ -655,6 +704,106 @@ server.on('upgrade', (request, socket, head) => {
 // Session store
 const sessions = new Map();
 
+// ============================================================================
+// UNIFIED SESSION - Real-time sync polling
+// ============================================================================
+const portalClients = new Set(); // Track all connected portal WebSocket clients
+let lastSyncTimestamp = Date.now();
+let lastSyncedMessageId = null;
+
+// Poll the main session transcript for new messages and broadcast to portal clients
+async function pollForSync() {
+  if (!UNIFIED_SESSION || portalClients.size === 0) return;
+  
+  try {
+    // Re-read main session ID in case it changed
+    const currentSessionId = getMainSessionId();
+    const sessionPath = join(SESSIONS_DIR, `${currentSessionId}.jsonl`);
+    
+    if (!existsSync(sessionPath)) return;
+    
+    const content = readFileSync(sessionPath, 'utf8');
+    const lines = content.trim().split('\n').filter(l => l);
+    
+    // Check last 10 entries for new messages
+    const recentLines = lines.slice(-10);
+    
+    for (const line of recentLines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type !== 'message' || !entry.message) continue;
+        
+        const msg = entry.message;
+        const msgTimestamp = msg.timestamp || Date.parse(entry.timestamp) || 0;
+        const msgId = entry.id;
+        
+        // Skip if we've already synced this message
+        if (msgTimestamp <= lastSyncTimestamp) continue;
+        if (msgId && msgId === lastSyncedMessageId) continue;
+        
+        // Skip messages from Spark Portal itself (to avoid echo)
+        const text = typeof msg.content === 'string' ? msg.content :
+                    (Array.isArray(msg.content) ? msg.content.find(c => c.type === 'text')?.text : null);
+        
+        if (!text) continue;
+        if (text.includes('[Spark Web]') || text.includes('[Spark Portal]')) continue;
+        
+        // Skip heartbeats and system messages
+        if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
+        
+        // Clean up text for display
+        const cleanText = text
+          .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
+          .replace(/\n?\[message_id:[^\]]+\]/g, '')
+          .trim();
+        
+        if (!cleanText) continue;
+        
+        // Determine source (WhatsApp or other)
+        const isWhatsApp = text.includes('[WhatsApp') || text.includes('[message_id:');
+        const source = isWhatsApp ? 'whatsapp' : 'other';
+        
+        // Broadcast to all portal clients
+        const syncPayload = JSON.stringify({
+          type: 'sync',
+          message: {
+            role: msg.role === 'assistant' ? 'bot' : 'user',
+            text: cleanText,
+            source,
+            timestamp: msgTimestamp
+          }
+        });
+        
+        for (const client of portalClients) {
+          if (client.readyState === 1) { // WebSocket.OPEN
+            try {
+              client.send(syncPayload);
+            } catch (e) {
+              console.error('Failed to send sync to client:', e.message);
+            }
+          }
+        }
+        
+        // Update tracking
+        lastSyncTimestamp = msgTimestamp;
+        if (msgId) lastSyncedMessageId = msgId;
+        
+        console.log(`📡 Synced ${msg.role} message from ${source}: ${cleanText.slice(0, 50)}...`);
+      } catch (parseErr) {
+        // Skip malformed lines
+      }
+    }
+  } catch (e) {
+    console.error('Sync poll error:', e.message);
+  }
+}
+
+// Start sync polling if unified session is enabled
+if (UNIFIED_SESSION) {
+  setInterval(pollForSync, 3000); // Poll every 3 seconds
+  console.log('📡 Real-time sync polling started (every 3s)');
+}
+
 // Periodic cleanup of stale sessions (every hour)
 setInterval(() => {
   const now = Date.now();
@@ -756,6 +905,9 @@ function sendToClient(sessionId, data) {
 
 // Connection handler for chat/notes
 wss.on('connection', (ws, request) => {
+  // Track portal clients for sync broadcasting
+  portalClients.add(ws);
+  
   // Check if client is reconnecting with existing session
   const url = new URL(request.url, 'http://localhost');
   let sessionId = url.searchParams.get('session');
@@ -766,7 +918,7 @@ wss.on('connection', (ws, request) => {
   } else {
     // New session
     sessionId = `spark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    console.log(`⚡ [${sessionId}] New connection`);
+    console.log(`⚡ [${sessionId}] New connection (unified=${UNIFIED_SESSION})`);
   }
   
   const session = getOrCreateSession(sessionId);
@@ -816,6 +968,8 @@ wss.on('connection', (ws, request) => {
     console.log(`[${sessionId}] Disconnected (processing continues)`);
     // Don't delete session - keep it for reconnection
     if (session) session.ws = null;
+    // Remove from portal clients for sync broadcasting
+    portalClients.delete(ws);
   });
 });
 
@@ -1033,22 +1187,52 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
   // Append user message to shared session file (text only, not full base64)
   appendToSessionSync('user', typeof userContent === 'string' ? userContent.slice(0, 2000) : text);
   
-  // Get response using shared history
+  // Get response - use unified session (gateway) or isolated mode
   const startTime = Date.now();
   let response;
-  try {
-    response = await chat(sharedHistory, model, mode, hasImage);
-  } catch (e) {
-    console.error(`[${sessionId}] Chat error:`, e.message);
-    updatePendingRequest(sessionId, requestId, { status: 'error', error: `API error: ${e.message}` });
-    sendToClient(sessionId, { type: 'error', message: `API error: ${e.message}` });
-    sendToClient(sessionId, { type: 'done' });
-    return;
-  }
-  console.log(`🧠 [${sessionId}] ${Date.now() - startTime}ms: ${response.slice(0, 50)}...`);
   
-  // Append assistant response to shared session file
-  appendToSessionSync('assistant', response);
+  // Try unified session first if enabled (routes through WhatsApp context)
+  if (UNIFIED_SESSION && !hasImage) {
+    console.log(`🔗 [${sessionId}] Routing through unified session...`);
+    try {
+      const result = await sendToMainSession(
+        typeof userContent === 'string' ? userContent : text,
+        'Spark Portal'
+      );
+      
+      if (result && result.response) {
+        response = result.response;
+        console.log(`🧠 [${sessionId}] Unified response (${Date.now() - startTime}ms): ${response.slice(0, 50)}...`);
+      } else if (result && result.payloads) {
+        // Handle array of payloads
+        response = result.payloads.map(p => p.text).filter(Boolean).join('\n');
+        console.log(`🧠 [${sessionId}] Unified response from payloads (${Date.now() - startTime}ms): ${response.slice(0, 50)}...`);
+      } else {
+        throw new Error('No response from gateway');
+      }
+    } catch (e) {
+      console.warn(`[${sessionId}] Unified session failed, falling back to isolated:`, e.message);
+      // Fall through to isolated mode
+      response = null;
+    }
+  }
+  
+  // Fallback to isolated mode if unified didn't work or not enabled
+  if (!response) {
+    try {
+      response = await chat(sharedHistory, model, mode, hasImage);
+      console.log(`🧠 [${sessionId}] Isolated response (${Date.now() - startTime}ms): ${response.slice(0, 50)}...`);
+      
+      // Append to session file in isolated mode
+      appendToSessionSync('assistant', response);
+    } catch (e) {
+      console.error(`[${sessionId}] Chat error:`, e.message);
+      updatePendingRequest(sessionId, requestId, { status: 'error', error: `API error: ${e.message}` });
+      sendToClient(sessionId, { type: 'error', message: `API error: ${e.message}` });
+      sendToClient(sessionId, { type: 'done' });
+      return;
+    }
+  }
   
   // Store response and try to send to client
   const sent = sendToClient(sessionId, { type: 'text', content: response });
