@@ -10,7 +10,7 @@ import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import express from 'express';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { TTSProvider } from './providers/tts.js';
@@ -52,7 +52,27 @@ const tts = new TTSProvider(config.tts);
 
 // Shared session with Clawdbot (same as WhatsApp)
 const SESSIONS_DIR = '/home/heisenberg/.clawdbot/agents/main/sessions';
-const MAIN_SESSION_ID = 'd0bddcfd-ba66-479f-8f30-5cc187be5e61';
+
+// Get main session ID dynamically from sessions.json
+function getMainSessionId() {
+  try {
+    const sessionsPath = join(SESSIONS_DIR, 'sessions.json');
+    if (existsSync(sessionsPath)) {
+      const sessions = JSON.parse(readFileSync(sessionsPath, 'utf8'));
+      // sessions.json is keyed by session key (e.g., "agent:main:main")
+      const mainSession = sessions['agent:main:main'];
+      if (mainSession?.sessionId) {
+        return mainSession.sessionId;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to read main session ID:', e.message);
+  }
+  // Fallback to current known ID
+  return '1e4cdd11-d94a-4ed8-b686-029d5fb50ac1';
+}
+
+const MAIN_SESSION_ID = getMainSessionId();
 const MAIN_SESSION_PATH = join(SESSIONS_DIR, `${MAIN_SESSION_ID}.jsonl`);
 
 // Load recent history from main session
@@ -834,12 +854,107 @@ async function extractDocxText(dataUrl) {
   return result.value;
 }
 
+// Route special commands through Clawdbot's main session (for tools/skills)
+// Uses the CLI for reliable agent execution with full tool access
+async function routeThroughClawdbot(ws, sessionId, text) {
+  console.log(`🔀 [${sessionId}] Routing through Clawdbot: ${text.slice(0, 50)}...`);
+  sendToClient(sessionId, { type: 'thinking' });
+  
+  return new Promise((resolve) => {
+    const timeout = 5 * 60 * 1000; // 5 minutes timeout
+    let stdout = '';
+    let stderr = '';
+    let completed = false;
+    
+    // Use clawdbot agent CLI to route to main session
+    const proc = spawn(CLAWDBOT_PATH, [
+      'agent',
+      '--message', text,
+      '--to', '+6587588470', // Parth's number - routes to main session
+      '--json'
+    ], {
+      timeout,
+      env: { ...process.env }
+    });
+    
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    const timeoutId = setTimeout(() => {
+      if (!completed) {
+        completed = true;
+        proc.kill('SIGTERM');
+        console.error(`[${sessionId}] Clawdbot routing timeout after 5 minutes`);
+        sendToClient(sessionId, { type: 'error', message: 'Request timed out after 5 minutes' });
+        sendToClient(sessionId, { type: 'done' });
+        resolve(false);
+      }
+    }, timeout);
+    
+    proc.on('close', (code) => {
+      clearTimeout(timeoutId);
+      if (completed) return;
+      completed = true;
+      
+      try {
+        if (code !== 0) {
+          throw new Error(`CLI exited with code ${code}: ${stderr.slice(0, 200)}`);
+        }
+        
+        // Parse JSON output from CLI
+        const result = JSON.parse(stdout);
+        const payloads = result.result?.payloads || [];
+        const reply = payloads.map(p => p.text).filter(Boolean).join('\n') || 
+                      'Request processed by Clawdbot.';
+        
+        console.log(`✅ [${sessionId}] Clawdbot response: ${reply.slice(0, 100)}...`);
+        sendToClient(sessionId, { type: 'text', content: reply });
+        sendToClient(sessionId, { type: 'done' });
+        resolve(true);
+      } catch (e) {
+        console.error(`[${sessionId}] Clawdbot routing error:`, e.message);
+        // If JSON parsing fails, try to extract any useful text
+        const errorMsg = e.message.includes('JSON') 
+          ? (stderr || stdout || 'Unknown error from Clawdbot').slice(0, 500)
+          : e.message;
+        sendToClient(sessionId, { type: 'error', message: errorMsg });
+        sendToClient(sessionId, { type: 'done' });
+        resolve(false);
+      }
+    });
+    
+    proc.on('error', (e) => {
+      clearTimeout(timeoutId);
+      if (completed) return;
+      completed = true;
+      
+      console.error(`[${sessionId}] Clawdbot spawn error:`, e.message);
+      sendToClient(sessionId, { type: 'error', message: `Failed to run Clawdbot: ${e.message}` });
+      sendToClient(sessionId, { type: 'done' });
+      resolve(false);
+    });
+  });
+}
+
 // Handle text/voice transcript (with optional image or file)
 // Processing continues even if client disconnects
 async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData) {
   if (!text?.trim()) return;
   
   const sessionId = ws.sessionId;
+  
+  // Route special commands through Clawdbot main session (for tools/skills)
+  const specialPrefixes = ['/plan', 'plan:', '/research', 'RESEARCH REQUEST', 'DEV TEAM'];
+  if (specialPrefixes.some(p => text.toLowerCase().startsWith(p.toLowerCase()))) {
+    await routeThroughClawdbot(ws, sessionId, text);
+    return;
+  }
+  
   const hasImage = !!imageDataUrl;
   // Use Sonnet for images (faster), Opus for text-only chat
   const model = hasImage ? 'claude-sonnet-4-20250514' : (MODELS[mode] || MODELS.chat);

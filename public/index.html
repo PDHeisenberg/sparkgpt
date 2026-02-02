@@ -153,6 +153,11 @@
       width: 100%;
       max-width: 100%;
     }
+    
+    /* Intro page: no scrolling */
+    #messages:has(#welcome:not([style*="display: none"])) {
+      overflow: hidden;
+    }
 
     /* Voice mode content - scrolling transcript log */
     #voice-content {
@@ -426,9 +431,18 @@
       30% { transform: translateY(-8px); opacity: 1; }
     }
 
+    /* Welcome/Intro container */
+    #welcome {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      padding: 0 16px;
+    }
+    
     /* Greeting */
     #greeting {
-      padding: 80px 0 24px;
+      padding: 70px 0 24px;
+      padding-top: max(70px, calc(60px + env(safe-area-inset-top, 0px)));
     }
 
     #greeting h1 {
@@ -441,9 +455,9 @@
     /* Quick actions */
     #shortcuts {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: flex-start;
+      flex-direction: column;
+      gap: 12px;
+      align-items: flex-start;
       padding: 0;
       padding-bottom: 140px;
       transition: transform 0.3s ease;
@@ -471,18 +485,49 @@
       background: var(--glass);
       border: 1px solid var(--glass-border);
       box-shadow: 0 2px 8px var(--glass-shadow);
-      border-radius: 20px;
-      padding: 12px 18px;
+      border-radius: 24px;
+      padding: 14px 18px;
       color: var(--text);
       font-size: 15px;
       font-weight: 500;
       cursor: pointer;
       transition: all 0.2s;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
     }
 
     .shortcut:active {
-      transform: scale(0.96);
+      transform: scale(0.97);
       background: var(--shortcut-bg);
+    }
+
+    .shortcut .shortcut-icon {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      stroke: var(--text-secondary);
+      stroke-width: 1.8;
+      fill: none;
+      margin-top: 2px;
+    }
+
+    .shortcut .shortcut-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      text-align: left;
+    }
+
+    .shortcut .shortcut-title {
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .shortcut .shortcut-sub {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-tertiary);
     }
 
     /* Bottom nav - three separate elements */
@@ -1416,6 +1461,186 @@
       from { opacity: 0; }
       to { opacity: 1; }
     }
+
+    /* ============================================================================
+       BOTTOM SHEET MODAL SYSTEM
+       ============================================================================ */
+    
+    .bottom-sheet-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity 200ms ease-out;
+      touch-action: none;
+    }
+    
+    .bottom-sheet-overlay.visible {
+      opacity: 1;
+    }
+    
+    .bottom-sheet {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg);
+      border-radius: 16px 16px 0 0;
+      padding: 20px;
+      padding-bottom: calc(20px + env(safe-area-inset-bottom, 16px));
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
+      transform: translateY(100%);
+      transition: transform 300ms cubic-bezier(0.32, 0.72, 0, 1);
+      z-index: 10000;
+      max-height: 90vh;
+      overflow-y: auto;
+      touch-action: pan-y;
+      will-change: transform;
+    }
+    
+    /* Desktop: centered with max width */
+    @media (min-width: 520px) {
+      .bottom-sheet {
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%) translateY(100%);
+        width: 100%;
+        max-width: 480px;
+        border-radius: 16px 16px 0 0;
+      }
+      
+      .bottom-sheet.visible {
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+    
+    .bottom-sheet.visible {
+      transform: translateY(0);
+    }
+    
+    .bottom-sheet.closing {
+      transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    
+    /* Drag handle */
+    .bottom-sheet-handle {
+      width: 36px;
+      height: 4px;
+      background: var(--text-tertiary);
+      border-radius: 2px;
+      margin: 0 auto 16px;
+      opacity: 0.5;
+    }
+    
+    /* Header: icon + title + subtitle */
+    .bottom-sheet-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    
+    .bottom-sheet-icon {
+      font-size: 28px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    
+    .bottom-sheet-titles {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .bottom-sheet-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0;
+      line-height: 1.2;
+    }
+    
+    .bottom-sheet-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin: 2px 0 0;
+      line-height: 1.3;
+    }
+    
+    /* Input */
+    .bottom-sheet-input {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--input-border);
+      font-size: 16px;
+      font-family: inherit;
+      resize: none;
+      min-height: 52px;
+      max-height: 120px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    
+    .bottom-sheet-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    
+    .bottom-sheet-input::placeholder {
+      color: var(--text-tertiary);
+    }
+    
+    .bottom-sheet-input.error {
+      border-color: var(--red);
+      animation: shake 0.3s ease;
+    }
+    
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
+    }
+    
+    /* Submit button */
+    .bottom-sheet-submit {
+      width: 100%;
+      padding: 16px;
+      margin-top: 12px;
+      border-radius: 12px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+    
+    .bottom-sheet-submit:active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+    
+    .bottom-sheet-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* Keyboard awareness - move sheet up when keyboard opens */
+    @supports (height: 100dvh) {
+      .bottom-sheet {
+        /* Use dynamic viewport to account for keyboard */
+      }
+    }
+    
+    /* When keyboard opens on mobile */
+    body.keyboard-open .bottom-sheet {
+      max-height: 60vh;
+    }
   </style>
 </head>
 <body>
@@ -1480,13 +1705,41 @@
           <h1>Hi, Parth,<br>how can I help?</h1>
         </div>
         <div id="shortcuts">
-          <button class="shortcut" id="todays-reports-btn" aria-label="View daily reports">Daily Reports</button>
-          <button class="shortcut" id="articulations-btn" aria-label="View articulations">Articulations</button>
-          <button class="shortcut" id="devteam-btn" aria-label="Spawn dev team agent">Dev Team</button>
-          <button class="shortcut" id="researcher-btn" aria-label="Start deep research">Researcher</button>
-          <button class="shortcut" data-msg="Check my portfolio" aria-label="Check portfolio">Check my portfolio</button>
-          <button class="shortcut" data-msg="What's on my calendar?" aria-label="Check calendar">What's on my calendar?</button>
-          <button class="shortcut" data-msg="Summarize my emails" aria-label="Summarize emails">Summarize my emails</button>
+          <button class="shortcut" id="todays-reports-btn" aria-label="View daily reports">
+            <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
+            <div class="shortcut-content">
+              <span class="shortcut-title">Daily Reports</span>
+              <span class="shortcut-sub">Market updates & portfolio</span>
+            </div>
+          </button>
+          <button class="shortcut" id="articulations-btn" aria-label="View articulations">
+            <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <div class="shortcut-content">
+              <span class="shortcut-title">Articulations</span>
+              <span class="shortcut-sub">Refine your thinking</span>
+            </div>
+          </button>
+          <button class="shortcut" id="devteam-btn" aria-label="Spawn dev team agent">
+            <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+            <div class="shortcut-content">
+              <span class="shortcut-title">Dev Team</span>
+              <span class="shortcut-sub">Spawn coding agents</span>
+            </div>
+          </button>
+          <button class="shortcut" id="researcher-btn" aria-label="Start deep research">
+            <svg class="shortcut-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <div class="shortcut-content">
+              <span class="shortcut-title">Researcher</span>
+              <span class="shortcut-sub">Deep multi-source analysis</span>
+            </div>
+          </button>
+          <button class="shortcut" id="plan-btn" aria-label="Plan a feature">
+            <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+            <div class="shortcut-content">
+              <span class="shortcut-title">Plan Mode</span>
+              <span class="shortcut-sub">Tech specs for your dev team</span>
+            </div>
+          </button>
         </div>
       </div>
     </div>
@@ -1639,6 +1892,6 @@
       </svg>
     </button>
   </div>
-  <script type="module" src="app.js?v=71"></script>
+  <script type="module" src="app.js?v=82"></script>
 </body>
 </html>

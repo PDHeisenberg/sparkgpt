@@ -237,6 +237,7 @@ themeBtn?.addEventListener('click', () => {
 let ws = null;
 let mode = 'chat';
 let pageState = 'intro'; // 'intro' or 'chatfeed'
+let articulationsMode = false; // Text refinement mode
 // Realtime voice state is defined in the REALTIME VOICE MODE section
 let isListening = false;
 let realtimeReconnectAttempts = 0;
@@ -254,48 +255,83 @@ let mediaStream = null;
 // PAGE STATE MANAGEMENT
 // ============================================================================
 
+// Transition lock to prevent race conditions between page state changes
+let isTransitioning = false;
+
 function showIntroPage() {
+  // Prevent race conditions during transitions
+  if (isTransitioning) {
+    console.log('showIntroPage blocked - transition in progress');
+    return;
+  }
+  isTransitioning = true;
+  
   console.log('showIntroPage called');
-  pageState = 'intro';
-  // Remove chatfeed mode from body
-  document.body.classList.remove('chatfeed-mode');
-  // Show welcome
-  if (welcomeEl) welcomeEl.style.display = '';
-  // Clear messages (but keep welcome)
-  messagesEl?.querySelectorAll('.msg').forEach(m => m.remove());
-  // Show history button
-  if (historyBtn) {
-    historyBtn.classList.remove('hidden');
-    historyBtn.style.opacity = '1';
-    historyBtn.style.pointerEvents = 'auto';
-  }
-  // Hide close button - force both class and inline style
-  if (closeBtn) {
-    closeBtn.classList.remove('show');
-    closeBtn.style.opacity = '0';
-    closeBtn.style.pointerEvents = 'none';
-  }
+  
+  requestAnimationFrame(() => {
+    pageState = 'intro';
+    
+    // Reset articulations mode (previously monkey-patched)
+    articulationsMode = false;
+    if (textInput) textInput.placeholder = 'Talk to me';
+    
+    // Remove chatfeed mode from body
+    document.body.classList.remove('chatfeed-mode');
+    // Show welcome
+    if (welcomeEl) welcomeEl.style.display = '';
+    // Clear messages (but keep welcome) - includes thinking indicators
+    messagesEl?.querySelectorAll('.msg').forEach(m => m.remove());
+    // Remove any thinking indicator that might be lingering
+    removeThinking();
+    // Show history button (class-based only)
+    if (historyBtn) {
+      historyBtn.classList.remove('hidden');
+    }
+    // Hide close button (class-based only - CSS handles opacity/pointer-events)
+    if (closeBtn) {
+      closeBtn.classList.remove('show');
+    }
+    // Reset scroll position and set overflow for browsers without :has() support
+    if (messagesEl) {
+      messagesEl.scrollTop = 0;
+      messagesEl.style.overflow = 'hidden';
+    }
+    
+    isTransitioning = false;
+  });
 }
 
 function showChatFeedPage() {
+  // Prevent race conditions during transitions
+  if (isTransitioning) {
+    console.log('showChatFeedPage blocked - transition in progress');
+    return;
+  }
+  isTransitioning = true;
+  
   console.log('showChatFeedPage called');
-  pageState = 'chatfeed';
-  // Add chatfeed mode to body (hides header buttons)
-  document.body.classList.add('chatfeed-mode');
-  // Hide welcome
-  if (welcomeEl) welcomeEl.style.display = 'none';
-  // Hide history button
-  if (historyBtn) {
-    historyBtn.classList.add('hidden');
-    historyBtn.style.opacity = '0';
-    historyBtn.style.pointerEvents = 'none';
-  }
-  // Show close button - force both class and inline style
-  if (closeBtn) {
-    closeBtn.classList.add('show');
-    closeBtn.style.opacity = '1';
-    closeBtn.style.pointerEvents = 'auto';
-  }
+  
+  requestAnimationFrame(() => {
+    pageState = 'chatfeed';
+    // Add chatfeed mode to body (hides header buttons)
+    document.body.classList.add('chatfeed-mode');
+    // Hide welcome
+    if (welcomeEl) welcomeEl.style.display = 'none';
+    // Hide history button (class-based only)
+    if (historyBtn) {
+      historyBtn.classList.add('hidden');
+    }
+    // Show close button (class-based only - CSS handles opacity/pointer-events)
+    if (closeBtn) {
+      closeBtn.classList.add('show');
+    }
+    // Enable scrolling for browsers without :has() support
+    if (messagesEl) {
+      messagesEl.style.overflow = 'auto';
+    }
+    
+    isTransitioning = false;
+  });
 }
 
 // History button - load all messages and switch to chat feed
@@ -392,6 +428,9 @@ function formatMessage(text) {
 }
 
 function showThinking() {
+  // Don't show thinking indicator on intro page
+  if (pageState === 'intro') return;
+  
   removeThinking();
   const el = document.createElement('div');
   el.className = 'msg bot thinking';
@@ -1599,9 +1638,7 @@ document.querySelectorAll('.shortcut').forEach(btn => {
   });
 });
 
-// Articulations mode
-let articulationsMode = false;
-
+// Articulations mode button handler
 document.getElementById('articulations-btn')?.addEventListener('click', () => {
   articulationsMode = true;
   showChatFeedPage();
@@ -1619,81 +1656,187 @@ document.getElementById('articulations-btn')?.addEventListener('click', () => {
   textInput?.focus();
 });
 
+// ============================================================================
+// BOTTOM SHEET SYSTEM
+// ============================================================================
+
+/**
+ * Create and show a bottom sheet modal
+ * @param {Object} config - Configuration object
+ * @param {string} config.icon - Emoji icon
+ * @param {string} config.title - Title text
+ * @param {string} config.subtitle - One-line subtitle
+ * @param {string} config.placeholder - Input placeholder
+ * @param {string} config.submitText - Submit button text
+ * @param {Function} config.onSubmit - Callback with input value
+ * @returns {Object} - { close: Function } to programmatically close
+ */
+function createBottomSheet({ icon, title, subtitle, placeholder, submitText, onSubmit }) {
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'bottom-sheet-overlay';
+  
+  // Create sheet
+  const sheet = document.createElement('div');
+  sheet.className = 'bottom-sheet';
+  
+  sheet.innerHTML = `
+    <div class="bottom-sheet-handle"></div>
+    <div class="bottom-sheet-header">
+      <span class="bottom-sheet-icon">${icon}</span>
+      <div class="bottom-sheet-titles">
+        <h2 class="bottom-sheet-title">${title}</h2>
+        <p class="bottom-sheet-subtitle">${subtitle}</p>
+      </div>
+    </div>
+    <textarea class="bottom-sheet-input" placeholder="${placeholder}" rows="1"></textarea>
+    <button class="bottom-sheet-submit">${submitText}</button>
+  `;
+  
+  document.body.appendChild(overlay);
+  document.body.appendChild(sheet);
+  
+  const input = sheet.querySelector('.bottom-sheet-input');
+  const submitBtn = sheet.querySelector('.bottom-sheet-submit');
+  const handle = sheet.querySelector('.bottom-sheet-handle');
+  
+  // Close function with animation
+  function close() {
+    sheet.classList.add('closing');
+    sheet.classList.remove('visible');
+    overlay.classList.remove('visible');
+    
+    setTimeout(() => {
+      overlay.remove();
+      sheet.remove();
+    }, 200);
+  }
+  
+  // Animate in after a frame
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      overlay.classList.add('visible');
+      sheet.classList.add('visible');
+      input.focus();
+    });
+  });
+  
+  // Close on overlay tap
+  overlay.addEventListener('click', close);
+  
+  // Swipe to dismiss
+  let startY = 0;
+  let currentY = 0;
+  let isDragging = false;
+  
+  function handleTouchStart(e) {
+    // Only start drag from handle or if at top of scroll
+    const target = e.target;
+    if (target === handle || target === sheet && sheet.scrollTop === 0) {
+      startY = e.touches[0].clientY;
+      currentY = startY;
+      isDragging = true;
+      sheet.style.transition = 'none';
+    }
+  }
+  
+  function handleTouchMove(e) {
+    if (!isDragging) return;
+    currentY = e.touches[0].clientY;
+    const deltaY = currentY - startY;
+    
+    // Only allow dragging down
+    if (deltaY > 0) {
+      const isDesktop = window.innerWidth >= 520;
+      if (isDesktop) {
+        sheet.style.transform = `translateX(-50%) translateY(${deltaY}px)`;
+      } else {
+        sheet.style.transform = `translateY(${deltaY}px)`;
+      }
+    }
+  }
+  
+  function handleTouchEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    sheet.style.transition = '';
+    
+    const deltaY = currentY - startY;
+    
+    // If dragged more than 100px or with velocity, close
+    if (deltaY > 100) {
+      close();
+    } else {
+      // Snap back
+      const isDesktop = window.innerWidth >= 520;
+      if (isDesktop) {
+        sheet.style.transform = 'translateX(-50%) translateY(0)';
+      } else {
+        sheet.style.transform = 'translateY(0)';
+      }
+    }
+  }
+  
+  sheet.addEventListener('touchstart', handleTouchStart, { passive: true });
+  sheet.addEventListener('touchmove', handleTouchMove, { passive: true });
+  sheet.addEventListener('touchend', handleTouchEnd);
+  
+  // ESC to close
+  function handleKeydown(e) {
+    if (e.key === 'Escape') {
+      close();
+      document.removeEventListener('keydown', handleKeydown);
+    }
+  }
+  document.addEventListener('keydown', handleKeydown);
+  
+  // Submit handler
+  function handleSubmit() {
+    const value = input.value.trim();
+    if (!value) {
+      input.classList.add('error');
+      setTimeout(() => input.classList.remove('error'), 300);
+      return;
+    }
+    close();
+    onSubmit(value);
+  }
+  
+  submitBtn.addEventListener('click', handleSubmit);
+  
+  // Enter to submit (Cmd/Ctrl+Enter for multi-line)
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  });
+  
+  // Auto-resize input
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  });
+  
+  return { close };
+}
+
 // Dev Team Agent button (Engineer + QA combined workflow)
 document.getElementById('devteam-btn')?.addEventListener('click', () => {
   showDevTeamModal();
 });
 
 function showDevTeamModal() {
-  // Create modal overlay
-  const overlay = document.createElement('div');
-  overlay.id = 'devteam-modal';
-  overlay.style.cssText = `
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5); z-index: 9999;
-    display: flex; align-items: center; justify-content: center;
-    padding: 20px;
-    animation: fadeIn 0.2s ease-out;
-  `;
-  
-  const modal = document.createElement('div');
-  modal.style.cssText = `
-    background: var(--bg);
-    border-radius: 16px;
-    padding: 24px;
-    max-width: 500px;
-    width: 100%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    border: 1px solid var(--input-border);
-  `;
-  
-  modal.innerHTML = `
-    <h2 style="margin: 0 0 8px 0; font-size: 20px; color: var(--text);">Dev Team</h2>
-    <p style="margin: 0 0 16px 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5;">
-      Engineer + QA working together. Engineer implements fixes one by one, 
-      QA reviews each commit. If QA rejects, Engineer fixes and resubmits. 
-      Continues until all tasks are approved.
-    </p>
-    <textarea id="devteam-task" placeholder="Describe the task or list of issues to fix..." 
-      style="width: 100%; height: 120px; padding: 12px; border-radius: 8px; 
-      background: var(--input-bg); color: var(--text);
-      border: 1px solid var(--input-border); font-size: 14px; resize: none;
-      font-family: inherit;"></textarea>
-    <div style="display: flex; gap: 12px; margin-top: 16px;">
-      <button id="devteam-cancel" style="flex: 1; padding: 12px; border-radius: 8px;
-        background: var(--input-bg); color: var(--text);
-        border: 1px solid var(--input-border); cursor: pointer; font-size: 14px;">
-        Cancel
-      </button>
-      <button id="devteam-start" style="flex: 2; padding: 12px; border-radius: 8px;
-        background: var(--accent); color: white; border: none; cursor: pointer; 
-        font-size: 14px; font-weight: 600;">
-        Start Dev Team
-      </button>
-    </div>
-  `;
-  
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  
-  const taskInput = document.getElementById('devteam-task');
-  taskInput.focus();
-  
-  // Close on cancel or overlay click
-  document.getElementById('devteam-cancel').onclick = () => overlay.remove();
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  
-  // Start dev team
-  document.getElementById('devteam-start').onclick = () => {
-    const task = taskInput.value.trim();
-    if (!task) {
-      taskInput.style.borderColor = '#ff4a4a';
-      return;
-    }
-    
-    overlay.remove();
-    
-    const devTeamPrompt = `You are a Dev Team coordinator. Run an Engineer + QA collaborative workflow.
+  createBottomSheet({
+    icon: '👨‍💻',
+    title: 'Dev Team',
+    subtitle: 'AI pair for coding tasks',
+    placeholder: 'Describe the task or issues to fix...',
+    submitText: 'Start Dev Team',
+    onSubmit: (task) => {
+      const devTeamPrompt = `DEV TEAM REQUEST
+
+You are a Dev Team coordinator. Run an Engineer + QA collaborative workflow.
 
 TASK: ${task}
 
@@ -1726,18 +1869,22 @@ OUTPUT FORMAT:
 After each item: "✅ [item] - APPROVED" or "🔄 [item] - Fixing QA feedback..."
 Final: Summary table of all commits + status
 
+COMPLETION - MANDATORY:
+When ALL tasks are complete, use the message tool to send a WhatsApp notification:
+- action: "send"
+- target: "+6587588470"
+- message: "✅ Dev Team complete!
+
+[Summary of what was fixed/built]
+
+Commits: [list commits]"
+
 Start now.`;
-    
-    showChatFeedPage();
-    send(devTeamPrompt, 'chat');
-  };
-  
-  // Enter to submit
-  taskInput.onkeydown = (e) => {
-    if (e.key === 'Enter' && e.metaKey) {
-      document.getElementById('devteam-start').click();
+      
+      showChatFeedPage();
+      send(devTeamPrompt, 'chat');
     }
-  };
+  });
 }
 
 // Researcher button (Deep research with Q&A scoping)
@@ -1746,80 +1893,14 @@ document.getElementById('researcher-btn')?.addEventListener('click', () => {
 });
 
 function showResearcherModal() {
-  // Create modal overlay
-  const overlay = document.createElement('div');
-  overlay.id = 'researcher-modal';
-  overlay.style.cssText = `
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5); z-index: 9999;
-    display: flex; align-items: center; justify-content: center;
-    padding: 20px;
-    animation: fadeIn 0.2s ease-out;
-  `;
-  
-  const modal = document.createElement('div');
-  modal.style.cssText = `
-    background: var(--bg);
-    border-radius: 16px;
-    padding: 24px;
-    max-width: 500px;
-    width: 100%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    border: 1px solid var(--input-border);
-  `;
-  
-  modal.innerHTML = `
-    <h2 style="margin: 0 0 8px 0; font-size: 20px; color: var(--text);">Deep Research</h2>
-    <p style="margin: 0 0 16px 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5;">
-      I'll ask you some clarifying questions, then spawn a research agent that will:
-      • Search multiple sources (web, Reddit, Twitter/X, academic)
-      • Apply deep analysis (conjecture + criticism)
-      • Publish a comprehensive HTML report to spark-researchbot.netlify.app
-    </p>
-    <textarea id="researcher-topic" placeholder="What would you like me to research?
-e.g., 'AI chip competition between NVIDIA and AMD'
-      'Impact of Fed policy on emerging markets'
-      'Latest developments in fusion energy'..." 
-      style="width: 100%; height: 140px; padding: 12px; border-radius: 8px; 
-      background: var(--input-bg); color: var(--text);
-      border: 1px solid var(--input-border); font-size: 14px; resize: none;
-      font-family: inherit;"></textarea>
-    <div style="display: flex; gap: 12px; margin-top: 16px;">
-      <button id="researcher-cancel" style="flex: 1; padding: 12px; border-radius: 8px;
-        background: var(--input-bg); color: var(--text);
-        border: 1px solid var(--input-border); cursor: pointer; font-size: 14px;">
-        Cancel
-      </button>
-      <button id="researcher-start" style="flex: 2; padding: 12px; border-radius: 8px;
-        background: var(--accent); color: white; border: none; cursor: pointer; 
-        font-size: 14px; font-weight: 600;">
-        Start Research
-      </button>
-    </div>
-  `;
-  
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  
-  const topicInput = document.getElementById('researcher-topic');
-  topicInput.focus();
-  
-  // Close on cancel or overlay click
-  document.getElementById('researcher-cancel').onclick = () => overlay.remove();
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  
-  // Start research Q&A
-  document.getElementById('researcher-start').onclick = () => {
-    const topic = topicInput.value.trim();
-    if (!topic) {
-      topicInput.style.borderColor = '#ff4a4a';
-      return;
-    }
-    
-    overlay.remove();
-    
-    // Send to main agent for Q&A scoping
-    const researchRequest = `RESEARCH REQUEST
+  createBottomSheet({
+    icon: '🔬',
+    title: 'Research Mode',
+    subtitle: 'Deep research with sources',
+    placeholder: 'What would you like me to research?',
+    submitText: 'Start Research',
+    onSubmit: (topic) => {
+      const researchRequest = `RESEARCH REQUEST
 
 TOPIC: ${topic}
 
@@ -1832,17 +1913,31 @@ Please ask me clarifying questions to understand:
 - Sources to prioritize or avoid
 
 After I answer, spawn a research subagent with the full context.`;
-    
-    showChatFeedPage();
-    send(researchRequest, 'chat');
-  };
-  
-  // Enter to submit
-  topicInput.onkeydown = (e) => {
-    if (e.key === 'Enter' && e.metaKey) {
-      document.getElementById('researcher-start').click();
+      
+      showChatFeedPage();
+      send(researchRequest, 'chat');
     }
-  };
+  });
+}
+
+// Plan Mode button (Feature spec generation)
+document.getElementById('plan-btn')?.addEventListener('click', () => {
+  showPlanModeModal();
+});
+
+function showPlanModeModal() {
+  createBottomSheet({
+    icon: '📋',
+    title: 'Plan Mode',
+    subtitle: 'Create detailed specs',
+    placeholder: 'What do you want to build?',
+    submitText: 'Start Planning',
+    onSubmit: (topic) => {
+      const planRequest = `/plan ${topic}`;
+      showChatFeedPage();
+      send(planRequest, 'chat');
+    }
+  });
 }
 
 // Override send for articulations mode
@@ -1891,13 +1986,8 @@ async function sendArticulation(text) {
   }
 }
 
-// Reset articulations mode when closing
-const originalShowIntroPage = showIntroPage;
-showIntroPage = function() {
-  articulationsMode = false;
-  if (textInput) textInput.placeholder = 'Talk to me';
-  originalShowIntroPage();
-};
+// NOTE: Articulations mode reset is now handled directly in showIntroPage()
+// (removed monkey-patch pattern for cleaner code and to prevent state issues)
 
 // Today's Reports button - shows all daily reports
 document.getElementById('todays-reports-btn')?.addEventListener('click', async () => {
