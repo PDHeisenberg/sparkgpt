@@ -7,8 +7,8 @@ redirects = []
 [functions."*"]
 
 [build]
-publish = "/home/heisenberg/clawd/spark-voice/public"
-publishOrigin = "ui"
+publish = "/home/heisenberg/clawd/spark-voice"
+publishOrigin = "default"
 
 [build.environment]
 

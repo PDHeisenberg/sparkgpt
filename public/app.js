@@ -269,6 +269,16 @@ function loadHistoryInBackground(forceRefresh = false) {
     .then(data => {
       preloadedHistory = data.messages || [];
       console.log(`📜 Pre-loaded ${preloadedHistory.length} messages`);
+      
+      // Track latest timestamp for catch-up on reconnect
+      if (preloadedHistory.length > 0) {
+        const lastMsg = preloadedHistory[preloadedHistory.length - 1];
+        if (lastMsg.timestamp && lastMsg.timestamp > lastMessageTimestamp) {
+          lastMessageTimestamp = lastMsg.timestamp;
+          console.log(`📜 Set lastMessageTimestamp to ${lastMessageTimestamp}`);
+        }
+      }
+      
       return preloadedHistory;
     })
     .catch(e => {
@@ -427,6 +437,35 @@ closeBtn?.addEventListener('click', (e) => {
 // MESSAGES
 // ============================================================================
 
+// Track recently displayed messages to prevent duplicates (by content hash)
+const displayedMessageHashes = new Set();
+const MAX_DISPLAYED_HASHES = 50;
+
+function hashMessageContent(text) {
+  // Simple hash for deduplication
+  const str = (text || '').trim().slice(0, 200);
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+}
+
+function trackDisplayedMessage(text) {
+  const hash = hashMessageContent(text);
+  displayedMessageHashes.add(hash);
+  // Clean old entries
+  if (displayedMessageHashes.size > MAX_DISPLAYED_HASHES) {
+    const iter = displayedMessageHashes.values();
+    for (let i = 0; i < 10; i++) displayedMessageHashes.delete(iter.next().value);
+  }
+}
+
+function isMessageDisplayed(text) {
+  return displayedMessageHashes.has(hashMessageContent(text));
+}
+
 // Check if user is scrolled near the bottom
 function isNearBottom(threshold = 100) {
   if (!messagesEl) return true;
@@ -442,10 +481,19 @@ function scrollToBottomIfNeeded() {
 }
 
 function addMsg(text, type) {
-  // If on intro page and sending a message, switch to chat feed
+  // If on intro page, switch to chat feed
+  // NOTE: For user messages from send(), history is already rendered before this is called
+  // This fallback handles bot messages and other cases
   if (pageState === 'intro') {
-    showChatFeedPage();
+    // Render preloaded history if not already done
+    if (preloadedHistory && preloadedHistory.length > 0 && !historyRendered) {
+      renderPreloadedHistory();
+    }
+    showChatFeedPage({ skipHistory: true });
   }
+  
+  // Track this message for deduplication
+  trackDisplayedMessage(text);
   
   const el = document.createElement('div');
   el.className = `msg ${type}`;
@@ -1245,13 +1293,14 @@ textInput?.addEventListener('blur', () => {
 
 sendBtn?.addEventListener('click', submitText);
 
-function submitText() {
+async function submitText() {
   const text = textInput?.value.trim();
   if (!text || isProcessing) return;
   textInput.value = '';
   textInput.style.height = 'auto'; // Reset height
   sendBtn?.classList.remove('show');
-  send(text, 'chat');
+  voiceBtn?.classList.remove('hidden'); // Reset voice button visibility
+  await send(text, 'chat');
 }
 
 // ============================================================================
@@ -1347,6 +1396,54 @@ deleteNotesBtn?.addEventListener('click', discardRecording);
 
 // Session persistence
 let chatSessionId = localStorage.getItem('spark_session_id');
+let lastMessageTimestamp = 0; // Track last received message time for catch-up
+let isReconnecting = false;
+
+// Catch up on missed messages after reconnection
+async function catchUpMissedMessages() {
+  if (pageState !== 'chatfeed') return; // Only catch up if viewing chat
+  
+  try {
+    console.log('🔄 Catching up on missed messages since:', lastMessageTimestamp);
+    const res = await fetch(`/api/messages/recent?since=${lastMessageTimestamp}`);
+    if (!res.ok) return;
+    
+    const data = await res.json();
+    const messages = data.messages || [];
+    
+    if (messages.length === 0) {
+      console.log('🔄 No missed messages');
+      return;
+    }
+    
+    console.log(`🔄 Found ${messages.length} missed message(s)`);
+    
+    for (const msg of messages) {
+      // Skip duplicates
+      if (isMessageDisplayed(msg.text)) continue;
+      
+      trackDisplayedMessage(msg.text);
+      
+      const el = document.createElement('div');
+      el.className = `msg ${msg.role === 'user' ? 'user' : 'bot'}`;
+      if (msg.role === 'user') {
+        el.textContent = msg.text;
+      } else {
+        el.innerHTML = formatMessage(msg.text);
+      }
+      messagesEl.appendChild(el);
+      
+      // Update last timestamp
+      if (msg.timestamp > lastMessageTimestamp) {
+        lastMessageTimestamp = msg.timestamp;
+      }
+    }
+    
+    scrollToBottomIfNeeded();
+  } catch (e) {
+    console.error('Catch-up failed:', e);
+  }
+}
 
 function connect() {
   // Build URL with session ID for reconnection
@@ -1362,31 +1459,77 @@ function connect() {
     ws.onopen = () => {
       console.log('✅ Chat WebSocket connected');
       updateSparkStatus('connected');
+      
+      // Catch up on any missed messages during disconnection
+      if (isReconnecting) {
+        catchUpMissedMessages();
+      }
+      isReconnecting = false;
     };
     ws.onclose = (e) => {
       console.log('🔌 Chat WebSocket closed:', e.code, e.reason);
       updateSparkStatus('disconnected');
+      isReconnecting = true; // Mark that next connect is a reconnection
       setTimeout(connect, 2000);
     };
     ws.onerror = (e) => {
       console.error('❌ Chat WebSocket error:', e);
       updateSparkStatus('disconnected');
     };
-    ws.onmessage = (e) => { try { handle(JSON.parse(e.data)); } catch {} };
+    ws.onmessage = (e) => { 
+      try { 
+        const data = JSON.parse(e.data);
+        console.log('📨 WS received:', data.type, data.content?.slice?.(0, 50) || '');
+        handle(data); 
+      } catch (err) {
+        console.error('❌ WS message error:', err, e.data?.slice?.(0, 100));
+      } 
+    };
   } catch (e) {
     console.error('❌ Failed to create WebSocket:', e);
     updateSparkStatus('disconnected');
   }
 }
 
-function send(text, sendMode) {
+async function send(text, sendMode) {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     toast('Not connected', true);
     return;
   }
+  
+  // If on intro page, ensure history is loaded before showing chat feed
+  // This prevents the "blank space" issue where user's message appears alone
+  if (pageState === 'intro') {
+    // Wait for history to load (should already be loaded, but ensure it)
+    if (historyLoadPromise) {
+      try {
+        await historyLoadPromise;
+        console.log('📜 History ready, preloaded:', preloadedHistory?.length || 0, 'messages');
+      } catch (e) {
+        console.log('History load failed, continuing anyway');
+      }
+    }
+    
+    // Render history BEFORE switching to chat feed and adding user message
+    if (preloadedHistory && preloadedHistory.length > 0 && !historyRendered) {
+      console.log('📜 Rendering history before first message');
+      renderPreloadedHistory();
+    }
+    
+    // Now switch to chat feed (history already rendered)
+    showChatFeedPage({ skipHistory: true });
+  }
+  
   isProcessing = true;
   updateSparkPillText();
-  addMsg(text, 'user');
+  
+  // Add user message (history should already be rendered above if on intro)
+  const el = document.createElement('div');
+  el.className = 'msg user';
+  el.textContent = text;
+  messagesEl.appendChild(el);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  
   showThinking();
   setStatus('Sending...');
   ws.send(JSON.stringify({ type: 'transcript', text, mode: sendMode }));
@@ -1416,30 +1559,47 @@ function handle(data) {
       // Real-time sync: new message from WhatsApp or other surface
       console.log('📡 Sync message:', data.message?.source, data.message?.text?.slice(0, 50));
       refreshHistoryCache(); // Keep history cache up to date
-      if (data.message) {
+      if (data.message && data.message.text) {
+        // Track timestamp for catch-up on reconnect
+        if (data.message.timestamp && data.message.timestamp > lastMessageTimestamp) {
+          lastMessageTimestamp = data.message.timestamp;
+        }
+        
+        // Check for duplicates using hash-based tracking
+        if (isMessageDisplayed(data.message.text)) {
+          console.log('📡 Skipping duplicate sync message (hash match)');
+          break;
+        }
+        
         // Show on chat feed if we're viewing it
         if (pageState === 'chatfeed') {
-          // Check for duplicates (don't add if last message has same text)
-          const lastMsg = messagesEl?.querySelector('.msg:last-child');
-          const lastText = lastMsg?.textContent || lastMsg?.innerText || '';
-          if (lastText !== data.message.text) {
-            const el = document.createElement('div');
-            el.className = `msg ${data.message.role === 'user' ? 'user' : 'bot'}`;
-            if (data.message.role === 'user') {
-              el.textContent = data.message.text;
-            } else {
-              el.innerHTML = formatMessage(data.message.text);
-            }
-            // Add source indicator for WhatsApp messages
-            if (data.message.source === 'whatsapp') {
-              el.title = 'From WhatsApp';
-            }
-            messagesEl.appendChild(el);
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+          // Track and display
+          trackDisplayedMessage(data.message.text);
+          
+          const el = document.createElement('div');
+          el.className = `msg ${data.message.role === 'user' ? 'user' : 'bot'}`;
+          if (data.message.role === 'user') {
+            el.textContent = data.message.text;
+          } else {
+            el.innerHTML = formatMessage(data.message.text);
           }
-        } else if (pageState === 'intro' && data.message.role === 'bot') {
-          // Show toast notification on intro page for new bot messages
-          toast('New message from Spark');
+          // Add source indicator for WhatsApp messages
+          if (data.message.source === 'whatsapp') {
+            el.title = 'From WhatsApp';
+          }
+          messagesEl.appendChild(el);
+          // Auto-scroll only if near bottom
+          scrollToBottomIfNeeded();
+          
+          // Remove thinking indicator if this is a bot response
+          if (data.message.role === 'bot') {
+            removeThinking();
+          }
+        } else if (pageState === 'intro') {
+          // Show toast notification on intro page for new messages
+          if (data.message.role === 'bot') {
+            toast('New message from Spark');
+          }
         }
       }
       break;
@@ -1450,11 +1610,17 @@ function handle(data) {
       setStatus('Thinking...');
       break;
     case 'text':
+      console.log('✅ Text message received:', data.content?.slice?.(0, 100));
       removeThinking();
       setStatus('');
       const lastSys = messagesEl?.querySelector('.msg.system:last-child');
       if (lastSys?.textContent === 'Transcribing...') lastSys.remove();
-      addMsg(data.content, 'bot');
+      if (data.content) {
+        addMsg(data.content, 'bot');
+        console.log('✅ Bot message added to DOM');
+      } else {
+        console.warn('⚠️ Empty text content received');
+      }
       break;
     case 'transcription':
       const transSys = messagesEl?.querySelector('.msg.system:last-child');
@@ -2034,16 +2200,21 @@ function showPlanModeModal() {
 
 // Override send for articulations mode
 const originalSend = send;
-send = function(text, sendMode) {
+send = async function(text, sendMode) {
   if (articulationsMode) {
-    sendArticulation(text);
+    await sendArticulation(text);
   } else {
-    originalSend(text, sendMode);
+    await originalSend(text, sendMode);
   }
 };
 
 async function sendArticulation(text) {
   if (!text.trim()) return;
+  
+  // Ensure we're in chat feed mode
+  if (pageState === 'intro') {
+    showChatFeedPage({ skipHistory: true });
+  }
   
   // Show user message
   const userEl = document.createElement('div');

@@ -12,7 +12,7 @@
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import express from 'express';
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, watch } from 'fs';
 import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -465,6 +465,72 @@ app.get('/api/messages/all', async (req, res) => {
   }
 });
 
+// Fetch recent messages since a timestamp (for catch-up after reconnection)
+app.get('/api/messages/recent', async (req, res) => {
+  try {
+    const since = parseInt(req.query.since) || 0;
+    const recentMessages = [];
+    
+    // Read main session file
+    const currentSessionId = getMainSessionId();
+    const sessionPath = join(SESSIONS_DIR, `${currentSessionId}.jsonl`);
+    
+    if (!existsSync(sessionPath)) {
+      return res.json({ messages: [] });
+    }
+    
+    const content = readFileSync(sessionPath, 'utf8');
+    const lines = content.trim().split('\n').filter(l => l);
+    
+    // Read last 50 lines for efficiency
+    const recentLines = lines.slice(-50);
+    
+    for (const line of recentLines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type !== 'message' || !entry.message) continue;
+        
+        const msg = entry.message;
+        const msgTimestamp = msg.timestamp || Date.parse(entry.timestamp) || 0;
+        
+        // Skip messages before the requested timestamp
+        if (msgTimestamp <= since) continue;
+        
+        const text = typeof msg.content === 'string' ? msg.content :
+                    (Array.isArray(msg.content) ? msg.content.find(c => c.type === 'text')?.text : null);
+        
+        if (!text) continue;
+        
+        // Skip heartbeats and system messages
+        if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
+        
+        // Clean up text
+        const cleanText = text
+          .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
+          .replace(/\n?\[message_id:[^\]]+\]/g, '')
+          .replace(/^\[Spark Web\]\s*/g, '')
+          .trim();
+        
+        if (!cleanText) continue;
+        
+        recentMessages.push({
+          role: msg.role === 'assistant' ? 'bot' : 'user',
+          text: cleanText,
+          timestamp: msgTimestamp
+        });
+      } catch {}
+    }
+    
+    // Sort by timestamp
+    recentMessages.sort((a, b) => a.timestamp - b.timestamp);
+    
+    res.json({ messages: recentMessages });
+  } catch (e) {
+    console.error('Recent messages fetch error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Node status endpoint - check if PC is connected
 const CLAWDBOT_PATH = '/home/heisenberg/.npm-global/bin/clawdbot';
 
@@ -712,6 +778,20 @@ const portalClients = new Set(); // Track all connected portal WebSocket clients
 let lastSyncTimestamp = Date.now();
 let lastSyncedMessageId = null;
 
+// Track recently sent message IDs to avoid duplicate sync (by content hash)
+const recentlySentHashes = new Set();
+const MAX_HASH_CACHE = 100;
+
+function hashMessage(text) {
+  // Simple hash for deduplication
+  let hash = 0;
+  for (let i = 0; i < Math.min(text.length, 200); i++) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+}
+
 // Poll the main session transcript for new messages and broadcast to portal clients
 async function pollForSync() {
   if (!UNIFIED_SESSION || portalClients.size === 0) return;
@@ -738,16 +818,18 @@ async function pollForSync() {
         const msgTimestamp = msg.timestamp || Date.parse(entry.timestamp) || 0;
         const msgId = entry.id;
         
-        // Skip if we've already synced this message
+        // Skip if we've already synced this message (by timestamp)
         if (msgTimestamp <= lastSyncTimestamp) continue;
         if (msgId && msgId === lastSyncedMessageId) continue;
         
-        // Skip messages from Spark Portal itself (to avoid echo)
         const text = typeof msg.content === 'string' ? msg.content :
                     (Array.isArray(msg.content) ? msg.content.find(c => c.type === 'text')?.text : null);
         
         if (!text) continue;
-        if (text.includes('[Spark Web]') || text.includes('[Spark Portal]')) continue;
+        
+        // Skip USER messages from Spark Portal (to avoid echo of what you just typed)
+        // BUT allow assistant responses to be synced (they don't have [Spark Web] tag when from gateway)
+        if (msg.role === 'user' && (text.includes('[Spark Web]') || text.includes('[Spark Portal]'))) continue;
         
         // Skip heartbeats and system messages
         if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
@@ -756,13 +838,19 @@ async function pollForSync() {
         const cleanText = text
           .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
           .replace(/\n?\[message_id:[^\]]+\]/g, '')
+          .replace(/^\[Spark Web\]\s*/g, '')
           .trim();
         
         if (!cleanText) continue;
         
+        // Check content hash to avoid duplicates (more reliable than timestamp)
+        const contentHash = hashMessage(cleanText);
+        if (recentlySentHashes.has(contentHash)) continue;
+        
         // Determine source (WhatsApp or other)
         const isWhatsApp = text.includes('[WhatsApp') || text.includes('[message_id:');
-        const source = isWhatsApp ? 'whatsapp' : 'other';
+        const isSparkWeb = text.includes('[Spark Web]');
+        const source = isWhatsApp ? 'whatsapp' : (isSparkWeb ? 'web' : 'other');
         
         // Broadcast to all portal clients
         const syncPayload = JSON.stringify({
@@ -789,6 +877,14 @@ async function pollForSync() {
         lastSyncTimestamp = msgTimestamp;
         if (msgId) lastSyncedMessageId = msgId;
         
+        // Track hash to prevent re-syncing
+        recentlySentHashes.add(contentHash);
+        if (recentlySentHashes.size > MAX_HASH_CACHE) {
+          // Clear oldest entries (Set maintains insertion order)
+          const iter = recentlySentHashes.values();
+          for (let i = 0; i < 20; i++) recentlySentHashes.delete(iter.next().value);
+        }
+        
         console.log(`📡 Synced ${msg.role} message from ${source}: ${cleanText.slice(0, 50)}...`);
       } catch (parseErr) {
         // Skip malformed lines
@@ -799,11 +895,84 @@ async function pollForSync() {
   }
 }
 
-// Start sync polling if unified session is enabled
-if (UNIFIED_SESSION) {
-  setInterval(pollForSync, 3000); // Poll every 3 seconds
-  console.log('📡 Real-time sync polling started (every 3s)');
+// Start sync with file watching (instant) + backup polling (fallback)
+let syncDebounceTimer = null;
+let fileWatcher = null;
+
+function debouncedSync() {
+  // Debounce rapid file changes (multiple writes in quick succession)
+  if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+  syncDebounceTimer = setTimeout(() => {
+    pollForSync();
+  }, 100); // 100ms debounce - fast but not excessive
 }
+
+function startFileWatcher() {
+  const currentSessionId = getMainSessionId();
+  const sessionPath = join(SESSIONS_DIR, `${currentSessionId}.jsonl`);
+  
+  if (fileWatcher) {
+    fileWatcher.close();
+    fileWatcher = null;
+  }
+  
+  if (!existsSync(sessionPath)) {
+    console.log('📡 Session file not found, will retry in 5s');
+    setTimeout(startFileWatcher, 5000);
+    return;
+  }
+  
+  try {
+    fileWatcher = watch(sessionPath, (eventType) => {
+      if (eventType === 'change') {
+        debouncedSync();
+      }
+    });
+    
+    fileWatcher.on('error', (err) => {
+      console.error('File watcher error:', err.message);
+      fileWatcher = null;
+      // Restart watcher after error
+      setTimeout(startFileWatcher, 2000);
+    });
+    
+    console.log(`📡 File watcher active on: ${sessionPath}`);
+  } catch (e) {
+    console.error('Failed to start file watcher:', e.message);
+    // Fall back to polling only
+  }
+}
+
+if (UNIFIED_SESSION) {
+  // Primary: file watching (instant sync)
+  startFileWatcher();
+  
+  // Backup: poll every 5s in case file watching misses something
+  setInterval(pollForSync, 5000);
+  console.log('📡 Real-time sync: file watching + 5s backup poll');
+}
+
+// WebSocket heartbeat to detect dead connections
+const HEARTBEAT_INTERVAL = 15000; // 15 seconds
+const HEARTBEAT_TIMEOUT = 10000; // 10 seconds to respond
+
+setInterval(() => {
+  for (const client of portalClients) {
+    if (client.readyState !== 1) continue; // Skip non-open connections
+    
+    // Check if client responded to last ping
+    if (client.isAlive === false) {
+      console.log(`💀 Client ${client.sessionId || 'unknown'} failed heartbeat, terminating`);
+      portalClients.delete(client);
+      client.terminate();
+      continue;
+    }
+    
+    // Mark as waiting for pong
+    client.isAlive = false;
+    client.ping();
+  }
+}, HEARTBEAT_INTERVAL);
 
 // Periodic cleanup of stale sessions (every hour)
 setInterval(() => {
@@ -898,9 +1067,16 @@ function getOrCreateSession(sessionId) {
 function sendToClient(sessionId, data) {
   const session = sessions.get(sessionId);
   if (session?.ws?.readyState === 1) { // WebSocket.OPEN
-    session.ws.send(JSON.stringify(data));
-    return true;
+    try {
+      session.ws.send(JSON.stringify(data));
+      console.log(`📤 [${sessionId}] Sent ${data.type}:`, data.content?.slice?.(0, 50) || '');
+      return true;
+    } catch (e) {
+      console.error(`❌ [${sessionId}] Failed to send ${data.type}:`, e.message);
+      return false;
+    }
   }
+  console.log(`⚠️ [${sessionId}] Cannot send ${data.type} - WS not open (state: ${session?.ws?.readyState})`);
   return false;
 }
 
@@ -908,6 +1084,12 @@ function sendToClient(sessionId, data) {
 wss.on('connection', (ws, request) => {
   // Track portal clients for sync broadcasting
   portalClients.add(ws);
+  
+  // Heartbeat tracking
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
   
   // Check if client is reconnecting with existing session
   const url = new URL(request.url, 'http://localhost');
@@ -1320,9 +1502,9 @@ async function chat(history, model, mode, hasImage = false) {
     body.thinking = { type: 'enabled', budget_tokens: 2000 };
   }
 
-  // 2 minute timeout to prevent infinite hangs
+  // 5 minute timeout to prevent infinite hangs (increased for Opus + thinking)
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  const timeoutId = setTimeout(() => controller.abort(), 300000);
   
   try {
     const jsonBody = JSON.stringify(body);
@@ -1352,8 +1534,8 @@ async function chat(history, model, mode, hasImage = false) {
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === 'AbortError') {
-      console.error('Chat request timed out after 2 minutes');
-      throw new Error('Request timed out after 2 minutes');
+      console.error('Chat request timed out after 5 minutes');
+      throw new Error('Request timed out after 5 minutes');
     }
     console.error('Chat fetch error:', e.message, e.cause || '');
     throw new Error(`Chat failed: ${e.message}`);
