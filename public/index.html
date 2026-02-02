@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Spark v83</title>
+  <title>Spark v85</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -157,6 +157,11 @@
     /* Intro page: no scrolling */
     #messages:has(#welcome:not([style*="display: none"])) {
       overflow: hidden;
+    }
+    
+    /* Chat feed mode: anchor messages to bottom (like typical chat apps) */
+    body.chatfeed-mode #messages {
+      justify-content: flex-end;
     }
 
     /* Voice mode content - scrolling transcript log */
@@ -1892,6 +1897,6 @@
       </svg>
     </button>
   </div>
-  <script type="module" src="app.js?v=82"></script>
+  <script type="module" src="app.js?v=85"></script>
 </body>
 </html>

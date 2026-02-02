@@ -6,6 +6,7 @@
  * Notes Mode: Record, transcribe, summarize
  * 
  * v83 - Session Unification: Spark Portal ↔ WhatsApp share same context
+ * v84 - Fix scroll lock: only auto-scroll to bottom if user is near bottom
  */
 
 import { WebSocketServer } from 'ws';

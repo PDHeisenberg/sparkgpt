@@ -251,9 +251,64 @@ let recordStart = null;
 let timerInterval = null;
 let mediaStream = null;
 
+// Pre-loaded chat history (loaded in background on page init)
+let preloadedHistory = null;
+let historyLoadPromise = null;
+let historyRendered = false; // Prevent double-rendering
+
 // ============================================================================
 // PAGE STATE MANAGEMENT
 // ============================================================================
+
+// Background load chat history on page init (no loading screen)
+function loadHistoryInBackground(forceRefresh = false) {
+  if (historyLoadPromise && !forceRefresh) return historyLoadPromise;
+  
+  historyLoadPromise = fetch('/api/messages/all')
+    .then(res => res.json())
+    .then(data => {
+      preloadedHistory = data.messages || [];
+      console.log(`📜 Pre-loaded ${preloadedHistory.length} messages`);
+      return preloadedHistory;
+    })
+    .catch(e => {
+      console.error('Failed to preload history:', e);
+      preloadedHistory = [];
+      return [];
+    });
+  
+  return historyLoadPromise;
+}
+
+// Refresh preloaded history in background (called after new messages arrive)
+function refreshHistoryCache() {
+  historyLoadPromise = null;
+  historyRendered = false;
+  loadHistoryInBackground(true);
+}
+
+// Render pre-loaded history into messages container
+function renderPreloadedHistory() {
+  // Prevent double-rendering
+  if (historyRendered) return;
+  if (!preloadedHistory || preloadedHistory.length === 0) return;
+  
+  historyRendered = true;
+  
+  preloadedHistory.forEach(m => {
+    const el = document.createElement('div');
+    el.className = `msg ${m.role === 'user' ? 'user' : 'bot'}`;
+    if (m.role === 'user') {
+      el.textContent = m.text;
+    } else {
+      el.innerHTML = formatMessage(m.text);
+    }
+    messagesEl.appendChild(el);
+  });
+  
+  // Scroll to bottom
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
 
 // Transition lock to prevent race conditions between page state changes
 let isTransitioning = false;
@@ -283,6 +338,8 @@ function showIntroPage() {
     messagesEl?.querySelectorAll('.msg').forEach(m => m.remove());
     // Remove any thinking indicator that might be lingering
     removeThinking();
+    // Reset history rendered flag so it can be re-rendered next time
+    historyRendered = false;
     // Show history button (class-based only)
     if (historyBtn) {
       historyBtn.classList.remove('hidden');
@@ -301,7 +358,7 @@ function showIntroPage() {
   });
 }
 
-function showChatFeedPage() {
+function showChatFeedPage(options = {}) {
   // Prevent race conditions during transitions
   if (isTransitioning) {
     console.log('showChatFeedPage blocked - transition in progress');
@@ -330,53 +387,31 @@ function showChatFeedPage() {
       messagesEl.style.overflow = 'auto';
     }
     
+    // Render pre-loaded history instantly (unless skipped)
+    if (!options.skipHistory && preloadedHistory && preloadedHistory.length > 0) {
+      renderPreloadedHistory();
+    }
+    
     isTransitioning = false;
   });
 }
 
-// History button - load all messages and switch to chat feed
+// History button - show chat feed with pre-loaded history (instant, no loading)
 historyBtn?.addEventListener('click', async () => {
+  // If history not yet loaded, wait for it briefly
+  if (preloadedHistory === null && historyLoadPromise) {
+    await historyLoadPromise;
+  }
+  
+  // showChatFeedPage will render pre-loaded history automatically
   showChatFeedPage();
   
-  // Show loading
-  const loadingEl = document.createElement('div');
-  loadingEl.className = 'msg system';
-  loadingEl.textContent = 'Loading...';
-  messagesEl.appendChild(loadingEl);
-  
-  try {
-    const response = await fetch('/api/messages/all');
-    const data = await response.json();
-    
-    // Remove loading
-    loadingEl.remove();
-    
-    if (!data.messages?.length) {
-      const emptyEl = document.createElement('div');
-      emptyEl.className = 'msg system';
-      emptyEl.textContent = 'No chat history yet';
-      messagesEl.appendChild(emptyEl);
-      return;
-    }
-    
-    // Display all messages
-    data.messages.forEach(m => {
-      const el = document.createElement('div');
-      el.className = `msg ${m.role === 'user' ? 'user' : 'bot'}`;
-      if (m.role === 'user') {
-        el.textContent = m.text;
-      } else {
-        el.innerHTML = formatMessage(m.text);
-      }
-      messagesEl.appendChild(el);
-    });
-    
-    // Scroll to bottom
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    
-  } catch (e) {
-    loadingEl.textContent = 'Failed to load history';
-    console.error('Failed to load messages:', e);
+  // If still empty after load, show message
+  if (!preloadedHistory || preloadedHistory.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'msg system';
+    emptyEl.textContent = 'No chat history yet';
+    messagesEl.appendChild(emptyEl);
   }
 });
 
@@ -391,6 +426,20 @@ closeBtn?.addEventListener('click', (e) => {
 // ============================================================================
 // MESSAGES
 // ============================================================================
+
+// Check if user is scrolled near the bottom
+function isNearBottom(threshold = 100) {
+  if (!messagesEl) return true;
+  const { scrollTop, scrollHeight, clientHeight } = messagesEl;
+  return scrollHeight - scrollTop - clientHeight < threshold;
+}
+
+// Auto-scroll only if user is near bottom
+function scrollToBottomIfNeeded() {
+  if (isNearBottom()) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+}
 
 function addMsg(text, type) {
   // If on intro page and sending a message, switch to chat feed
@@ -410,7 +459,14 @@ function addMsg(text, type) {
   }
   
   messagesEl.appendChild(el);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  
+  // Only auto-scroll if user is near bottom (allows scrolling up to read history)
+  // Exception: user messages always scroll to bottom
+  if (type === 'user') {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  } else {
+    scrollToBottomIfNeeded();
+  }
   return el;
 }
 
@@ -437,7 +493,7 @@ function showThinking() {
   el.id = 'thinking-indicator';
   el.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>';
   messagesEl.appendChild(el);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  scrollToBottomIfNeeded();
 }
 
 function removeThinking() {
@@ -1359,6 +1415,7 @@ function handle(data) {
     case 'sync':
       // Real-time sync: new message from WhatsApp or other surface
       console.log('📡 Sync message:', data.message?.source, data.message?.text?.slice(0, 50));
+      refreshHistoryCache(); // Keep history cache up to date
       if (data.message) {
         // Show on chat feed if we're viewing it
         if (pageState === 'chatfeed') {
@@ -1410,6 +1467,7 @@ function handle(data) {
       setStatus('');
       updateSparkPillText();
       fetchActiveSessions(); // Refresh sessions after response
+      refreshHistoryCache(); // Keep history cache up to date
       if (mode === 'voice' && !isListening) startVoice();
       break;
     case 'error':
@@ -1542,6 +1600,9 @@ menuDelete?.addEventListener('click', () => {
 
 // Initialize WebSocket connection
 connect();
+
+// Pre-load chat history in background (instant render when user opens chat)
+loadHistoryInBackground();
 
 // ============================================================================
 // PREVENT DOUBLE-TAP ZOOM (iOS Safari fix)
