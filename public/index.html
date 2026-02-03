@@ -498,10 +498,10 @@
     }
 
     .shortcut-section-items {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
       gap: 10px;
-      align-items: flex-start;
+      align-items: start;
     }
 
     /* When keyboard is shown */
@@ -1978,6 +1978,20 @@
                 <div class="shortcut-content">
                   <span class="shortcut-title">Articulate</span>
                   <span class="shortcut-sub">Refine your thinking</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- 📊 REPORTS Section -->
+          <div class="shortcut-section">
+            <div class="shortcut-section-header">📊 Reports</div>
+            <div class="shortcut-section-items">
+              <button class="shortcut" id="todays-reports-btn" aria-label="View daily reports">
+                <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
+                <div class="shortcut-content">
+                  <span class="shortcut-title">Daily Reports</span>
+                  <span class="shortcut-sub">Market updates & portfolio</span>
                 </div>
               </button>
             </div>
