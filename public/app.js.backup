@@ -251,164 +251,6 @@ let recordStart = null;
 let timerInterval = null;
 let mediaStream = null;
 
-// ============================================================================
-// MODE SESSION STATE - Separate sessions for each mode
-// ============================================================================
-let currentSparkMode = null; // null = main session, or 'dev', 'research', 'plan', 'articulate', 'dailyreports', 'videogen'
-let modeHistory = {}; // Cache history per mode
-let modeConfigs = {}; // Loaded from server
-
-// Mode configuration (will be loaded from server, fallback here)
-const MODE_DEFAULTS = {
-  dev: { name: 'Dev Mode', icon: '👨‍💻', notifyWhatsApp: true },
-  research: { name: 'Research Mode', icon: '🔬', notifyWhatsApp: true },
-  plan: { name: 'Plan Mode', icon: '📋', notifyWhatsApp: true },
-  articulate: { name: 'Articulate Mode', icon: '✍️', notifyWhatsApp: false },
-  dailyreports: { name: 'Daily Reports', icon: '📊', notifyWhatsApp: true },
-  videogen: { name: 'Video Gen', icon: '🎬', notifyWhatsApp: true }
-};
-
-// Load mode configs from server
-async function loadModeConfigs() {
-  try {
-    const res = await fetch('/api/modes');
-    const data = await res.json();
-    modeConfigs = data.modes || {};
-    console.log('📦 Loaded mode configs:', Object.keys(modeConfigs));
-  } catch (e) {
-    console.error('Failed to load mode configs:', e);
-    modeConfigs = MODE_DEFAULTS;
-  }
-}
-
-// Get config for a mode
-function getModeConfig(mode) {
-  return modeConfigs[mode] || MODE_DEFAULTS[mode] || { name: mode, icon: '📦' };
-}
-
-// Enter a mode (show mode-specific chat view)
-async function enterMode(modeName) {
-  const config = getModeConfig(modeName);
-  console.log(`📦 Entering ${config.name}...`);
-  
-  currentSparkMode = modeName;
-  
-  // Show chat feed page with mode indicator
-  showChatFeedPage();
-  
-  // Update UI to show mode
-  updateModeIndicator();
-  
-  // Load mode history
-  await loadModeHistory(modeName);
-  
-  // Clear current messages and show mode history
-  renderModeHistory(modeName);
-}
-
-// Exit mode (return to main session)
-function exitMode() {
-  console.log('📦 Exiting mode, returning to main...');
-  
-  currentSparkMode = null;
-  updateModeIndicator();
-  
-  // Reload main chat history
-  historyRendered = false;
-  if (pageState === 'chatfeed') {
-    renderChatHistory();
-  }
-}
-
-// Update mode indicator in UI
-function updateModeIndicator() {
-  let indicator = document.getElementById('mode-indicator');
-  
-  if (currentSparkMode) {
-    const config = getModeConfig(currentSparkMode);
-    
-    if (!indicator) {
-      // Create indicator
-      indicator = document.createElement('div');
-      indicator.id = 'mode-indicator';
-      indicator.className = 'mode-indicator';
-      document.querySelector('.top-bar')?.appendChild(indicator);
-    }
-    
-    indicator.innerHTML = `
-      <span class="mode-icon">${config.icon}</span>
-      <span class="mode-name">${config.name}</span>
-      <button class="mode-exit-btn" onclick="exitMode()">✕</button>
-    `;
-    indicator.style.display = 'flex';
-  } else {
-    if (indicator) {
-      indicator.style.display = 'none';
-    }
-  }
-}
-
-// Load history from mode session
-async function loadModeHistory(modeName) {
-  try {
-    // Request via WebSocket if connected
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'mode_history', sparkMode: modeName }));
-    } else {
-      // Fallback to REST
-      const res = await fetch(`/api/modes/${modeName}/history`);
-      const data = await res.json();
-      modeHistory[modeName] = data.messages || [];
-    }
-  } catch (e) {
-    console.error(`Failed to load ${modeName} history:`, e);
-    modeHistory[modeName] = [];
-  }
-}
-
-// Render mode history in chat feed
-function renderModeHistory(modeName) {
-  const messages = modeHistory[modeName] || [];
-  messagesEl.innerHTML = '';
-  
-  if (messages.length === 0) {
-    const config = getModeConfig(modeName);
-    // Show empty state
-    const emptyEl = document.createElement('div');
-    emptyEl.className = 'mode-empty-state';
-    emptyEl.innerHTML = `
-      <div class="mode-empty-icon">${config.icon}</div>
-      <div class="mode-empty-title">${config.name}</div>
-      <div class="mode-empty-desc">Start a conversation in this mode.</div>
-    `;
-    messagesEl.appendChild(emptyEl);
-  } else {
-    // Render messages
-    for (const msg of messages) {
-      const text = extractMessageText(msg);
-      if (text) {
-        addMessage(msg.role === 'assistant' ? 'bot' : 'user', text);
-      }
-    }
-  }
-  
-  scrollToBottom();
-}
-
-// Extract text from message content (handles various formats)
-function extractMessageText(msg) {
-  if (!msg?.content) return null;
-  if (typeof msg.content === 'string') return msg.content;
-  if (Array.isArray(msg.content)) {
-    const textPart = msg.content.find(c => c.type === 'text');
-    return textPart?.text || null;
-  }
-  return null;
-}
-
-// Initialize mode system
-loadModeConfigs();
-
 // Pre-loaded chat history (loaded in background on page init)
 let preloadedHistory = null;
 let historyLoadPromise = null;
@@ -724,23 +566,16 @@ function scrollToBottomIfNeeded() {
   }
 }
 
-function addMsg(text, type, options = {}) {
-  // If on intro page, DON'T auto-switch unless it's a user-initiated message
-  // This prevents sync/bot messages from interrupting the intro page
+function addMsg(text, type) {
+  // If on intro page, switch to chat feed
+  // NOTE: For user messages from send(), history is already rendered before this is called
+  // This fallback handles bot messages and other cases
   if (pageState === 'intro') {
-    if (options.userInitiated) {
-      // User sent a message - switch to chat feed
-      if (preloadedHistory && preloadedHistory.length > 0 && !historyRendered) {
-        renderPreloadedHistory();
-      }
-      showChatFeedPage({ skipHistory: true });
-    } else {
-      // Bot/sync message while on intro - just show toast, don't add to DOM
-      if (type === 'bot') {
-        toast('New message from Spark');
-      }
-      return null; // Don't add message to DOM
+    // Render preloaded history if not already done
+    if (preloadedHistory && preloadedHistory.length > 0 && !historyRendered) {
+      renderPreloadedHistory();
     }
+    showChatFeedPage({ skipHistory: true });
   }
   
   // Track this message for deduplication
@@ -1776,8 +1611,7 @@ async function send(text, sendMode) {
     }
     
     // Render history BEFORE switching to chat feed and adding user message
-    // Skip this if we're in a mode (mode has its own history)
-    if (!currentSparkMode && preloadedHistory && preloadedHistory.length > 0 && !historyRendered) {
+    if (preloadedHistory && preloadedHistory.length > 0 && !historyRendered) {
       console.log('📜 Rendering history before first message');
       renderPreloadedHistory();
     }
@@ -1800,16 +1634,7 @@ async function send(text, sendMode) {
   trackDisplayedMessage(text);
   
   showThinking();
-  
-  // Route to mode session or main session
-  if (currentSparkMode) {
-    // Send to mode-specific session
-    console.log(`📦 Sending to ${currentSparkMode} mode session`);
-    ws.send(JSON.stringify({ type: 'mode_message', sparkMode: currentSparkMode, text }));
-  } else {
-    // Send to main session
-    ws.send(JSON.stringify({ type: 'transcript', text, mode: sendMode }));
-  }
+  ws.send(JSON.stringify({ type: 'transcript', text, mode: sendMode }));
 }
 
 function handle(data) {
@@ -1880,35 +1705,19 @@ function handle(data) {
     case 'thinking':
       // Server acknowledged request and is processing
       console.log('🤔 Server thinking...');
-      // Route to session page if active
-      if (currentSessionMode && sessionPage.classList.contains('show')) {
-        showSessionThinking();
-      } else {
-        showThinking();
-      }
+      showThinking();
       break;
     case 'text':
       console.log('✅ Text message received:', data.content?.slice?.(0, 100));
-      // Route to session page if active
-      if (currentSessionMode && sessionPage.classList.contains('show')) {
-        removeSessionThinking();
-        if (data.content) {
-          addSessionMessage('bot', data.content);
-          // Update session status
-          sessionStatus.textContent = '● Active';
-          sessionStatus.classList.add('active');
-        }
+      removeThinking();
+      setStatus('');
+      const lastSys = messagesEl?.querySelector('.msg.system:last-child');
+      if (lastSys?.textContent === 'Transcribing...') lastSys.remove();
+      if (data.content) {
+        addMsg(data.content, 'bot');
+        console.log('✅ Bot message added to DOM');
       } else {
-        removeThinking();
-        setStatus('');
-        const lastSys = messagesEl?.querySelector('.msg.system:last-child');
-        if (lastSys?.textContent === 'Transcribing...') lastSys.remove();
-        if (data.content) {
-          addMsg(data.content, 'bot');
-          console.log('✅ Bot message added to DOM');
-        } else {
-          console.warn('⚠️ Empty text content received');
-        }
+        console.warn('⚠️ Empty text content received');
       }
       break;
     case 'transcription':
@@ -1919,40 +1728,19 @@ function handle(data) {
     case 'audio': playAudio(data.data); break;
     case 'done':
       isProcessing = false;
-      sessionPageProcessing = false;
       setStatus('');
       updateSparkPillText();
       fetchActiveSessions(); // Refresh sessions after response
-      checkActiveSubagentSessions(); // Refresh mode button states
       refreshHistoryCache(); // Keep history cache up to date
       if (mode === 'voice' && !isListening) startVoice();
       break;
     case 'error':
-      // Route to session page if active
-      if (currentSessionMode && sessionPage.classList.contains('show')) {
-        removeSessionThinking();
-        addSessionMessage('bot', `Error: ${data.message || 'Something went wrong'}`);
-        sessionPageProcessing = false;
-      } else {
-        removeThinking();
-      }
+      removeThinking();
       toast(data.message || 'Error', true);
       isProcessing = false;
       setStatus('');
       updateSparkPillText();
       fetchActiveSessions();
-      break;
-    
-    case 'mode_history':
-      // Received history from a mode session
-      console.log(`📦 Mode history received for ${data.mode}:`, data.messages?.length || 0, 'messages');
-      if (data.mode && data.messages) {
-        modeHistory[data.mode] = data.messages;
-        // If we're currently in this mode, render the history
-        if (currentSparkMode === data.mode) {
-          renderModeHistory(data.mode);
-        }
-      }
       break;
   }
 }
@@ -2206,12 +1994,18 @@ document.querySelectorAll('.shortcut').forEach(btn => {
   });
 });
 
-// Articulations mode button handler - enters dedicated articulate session
-document.getElementById('articulations-btn')?.addEventListener('click', async () => {
-  // Enter articulate mode session
-  await enterMode('articulate');
+// Articulations mode button handler
+document.getElementById('articulations-btn')?.addEventListener('click', () => {
+  articulationsMode = true;
+  showChatFeedPage();
   
-  // Update placeholder for articulate context
+  // Show intro message
+  const introEl = document.createElement('div');
+  introEl.className = 'msg system';
+  introEl.textContent = '✍️ Articulations mode. Type your text and I\'ll refine it.';
+  messagesEl.appendChild(introEl);
+  
+  // Update placeholder
   if (textInput) textInput.placeholder = 'Type text to refine...';
   
   // Focus input
@@ -2224,26 +2018,16 @@ document.getElementById('articulations-btn')?.addEventListener('click', async ()
 
 // Track active subagent sessions by mode
 const activeSubagentSessions = {
-  'spark-dev-mode': null,
-  'spark-research-mode': null,
-  'spark-plan-mode': null,
-  'spark-videogen-mode': null
+  'dev-mode': null,
+  'research-mode': null,
+  'plan-mode': null
 };
 
 // Map button IDs to session labels
 const buttonToSessionLabel = {
-  'devteam-btn': 'spark-dev-mode',
-  'researcher-btn': 'spark-research-mode',
-  'plan-btn': 'spark-plan-mode',
-  'videogen-btn': 'spark-videogen-mode'
-};
-
-// Map mode names to session labels
-const modeToSessionLabel = {
-  'dev': 'spark-dev-mode',
-  'research': 'spark-research-mode',
-  'plan': 'spark-plan-mode',
-  'videogen': 'spark-videogen-mode'
+  'devteam-btn': 'dev-mode',
+  'researcher-btn': 'research-mode',
+  'plan-btn': 'plan-mode'
 };
 
 // Check for active subagent sessions
@@ -2253,22 +2037,18 @@ async function checkActiveSubagentSessions() {
     const data = await response.json();
     
     // Reset all to null
-    activeSubagentSessions['spark-dev-mode'] = null;
-    activeSubagentSessions['spark-research-mode'] = null;
-    activeSubagentSessions['spark-plan-mode'] = null;
-    activeSubagentSessions['spark-videogen-mode'] = null;
+    activeSubagentSessions['dev-mode'] = null;
+    activeSubagentSessions['research-mode'] = null;
+    activeSubagentSessions['plan-mode'] = null;
     
     // Find matching subagent sessions
     for (const session of (data.sessions || [])) {
-      const label = session.label || '';
-      if (label.includes('dev-mode') || session.key?.includes('dev-mode')) {
-        activeSubagentSessions['spark-dev-mode'] = session;
-      } else if (label.includes('research-mode') || session.key?.includes('research-mode')) {
-        activeSubagentSessions['spark-research-mode'] = session;
-      } else if (label.includes('plan-mode') || session.key?.includes('plan-mode')) {
-        activeSubagentSessions['spark-plan-mode'] = session;
-      } else if (label.includes('videogen-mode') || session.key?.includes('videogen-mode')) {
-        activeSubagentSessions['spark-videogen-mode'] = session;
+      if (session.label === 'dev-mode' || session.key?.includes('dev-mode')) {
+        activeSubagentSessions['dev-mode'] = session;
+      } else if (session.label === 'research-mode' || session.key?.includes('research-mode')) {
+        activeSubagentSessions['research-mode'] = session;
+      } else if (session.label === 'plan-mode' || session.key?.includes('plan-mode')) {
+        activeSubagentSessions['plan-mode'] = session;
       }
     }
     
@@ -2304,246 +2084,8 @@ function updateSubagentButtonStates() {
 
 // Get active session for a mode
 function getActiveSession(mode) {
-  const label = modeToSessionLabel[mode] || mode;
-  return activeSubagentSessions[label];
+  return activeSubagentSessions[mode];
 }
-
-// ============================================================================
-// SESSION PAGE - Full-screen mode session interface
-// ============================================================================
-
-const sessionPage = document.getElementById('session-page');
-const sessionMessagesEl = document.getElementById('session-messages');
-const sessionInput = document.getElementById('session-input');
-const sessionSendBtn = document.getElementById('session-send-btn');
-const sessionBackBtn = document.getElementById('session-back-btn');
-const sessionIcon = document.getElementById('session-icon');
-const sessionTitle = document.getElementById('session-title');
-const sessionStatus = document.getElementById('session-status');
-
-let currentSessionMode = null; // 'dev', 'research', 'plan', 'video'
-let sessionPageProcessing = false;
-
-// Mode configurations for session page
-const SESSION_MODE_CONFIG = {
-  dev: {
-    name: 'Dev Mode',
-    icon: '👨‍💻',
-    sessionKey: 'spark-dev-mode',
-    placeholder: 'Describe what you want to build or fix...',
-    emptyTitle: 'Dev Mode',
-    emptyDesc: 'Start a coding session. Describe what you want to build or fix.'
-  },
-  research: {
-    name: 'Research Mode',
-    icon: '🔬',
-    sessionKey: 'spark-research-mode',
-    placeholder: 'What would you like to research?',
-    emptyTitle: 'Research Mode',
-    emptyDesc: 'Start a deep research session. Ask about any topic.'
-  },
-  plan: {
-    name: 'Plan Mode',
-    icon: '📋',
-    sessionKey: 'spark-plan-mode',
-    placeholder: 'What do you want to plan?',
-    emptyTitle: 'Plan Mode',
-    emptyDesc: 'Start planning. Describe your project or feature.'
-  },
-  videogen: {
-    name: 'Video Gen',
-    icon: '🎬',
-    sessionKey: 'spark-videogen-mode',
-    placeholder: 'Describe the video you want to create...',
-    emptyTitle: 'Video Gen',
-    emptyDesc: 'Generate AI videos. Describe what you want to create.'
-  }
-};
-
-// Show session page for a specific mode
-async function showSessionPage(mode) {
-  const config = SESSION_MODE_CONFIG[mode];
-  if (!config) {
-    console.error('Unknown session mode:', mode);
-    return;
-  }
-  
-  currentSessionMode = mode;
-  
-  // Update header
-  sessionIcon.textContent = config.icon;
-  sessionTitle.textContent = config.name;
-  sessionInput.placeholder = config.placeholder;
-  
-  // Check if session is active
-  const activeSession = getActiveSession(mode);
-  if (activeSession) {
-    sessionStatus.textContent = '● Active';
-    sessionStatus.classList.add('active');
-  } else {
-    sessionStatus.textContent = 'Session';
-    sessionStatus.classList.remove('active');
-  }
-  
-  // Clear messages
-  sessionMessagesEl.innerHTML = '';
-  
-  // Show session page
-  sessionPage.classList.add('show');
-  
-  // Load session history
-  await loadSessionHistory(mode, config);
-  
-  // Focus input
-  setTimeout(() => sessionInput.focus(), 100);
-}
-
-// Hide session page
-function hideSessionPage() {
-  sessionPage.classList.remove('show');
-  currentSessionMode = null;
-  sessionPageProcessing = false;
-}
-
-// Load session history from API
-async function loadSessionHistory(mode, config) {
-  try {
-    const res = await fetch(`/api/modes/${mode}/history?limit=50`);
-    const data = await res.json();
-    const messages = data.messages || [];
-    
-    if (messages.length === 0) {
-      // Show empty state
-      sessionMessagesEl.innerHTML = `
-        <div class="session-empty-state">
-          <div class="session-empty-icon">${config.icon}</div>
-          <div class="session-empty-title">${config.emptyTitle}</div>
-          <div class="session-empty-desc">${config.emptyDesc}</div>
-        </div>
-      `;
-    } else {
-      // Render messages
-      for (const msg of messages) {
-        const text = extractSessionMessageText(msg);
-        if (text) {
-          addSessionMessage(msg.role === 'assistant' ? 'bot' : 'user', text);
-        }
-      }
-      // Scroll to bottom
-      sessionMessagesEl.scrollTop = sessionMessagesEl.scrollHeight;
-    }
-  } catch (e) {
-    console.error('Failed to load session history:', e);
-    sessionMessagesEl.innerHTML = `
-      <div class="session-empty-state">
-        <div class="session-empty-icon">${config.icon}</div>
-        <div class="session-empty-title">${config.emptyTitle}</div>
-        <div class="session-empty-desc">${config.emptyDesc}</div>
-      </div>
-    `;
-  }
-}
-
-// Extract text from message content
-function extractSessionMessageText(msg) {
-  if (!msg?.content) return null;
-  if (typeof msg.content === 'string') return msg.content;
-  if (Array.isArray(msg.content)) {
-    const textPart = msg.content.find(c => c.type === 'text');
-    return textPart?.text || null;
-  }
-  return null;
-}
-
-// Add message to session page
-function addSessionMessage(type, text) {
-  // Remove empty state if present
-  const emptyState = sessionMessagesEl.querySelector('.session-empty-state');
-  if (emptyState) emptyState.remove();
-  
-  const el = document.createElement('div');
-  el.className = `msg ${type}`;
-  
-  if (type === 'bot') {
-    el.innerHTML = formatMessage(text);
-  } else {
-    el.textContent = text;
-  }
-  
-  sessionMessagesEl.appendChild(el);
-  sessionMessagesEl.scrollTop = sessionMessagesEl.scrollHeight;
-  return el;
-}
-
-// Show thinking indicator in session
-function showSessionThinking() {
-  // Remove existing thinking
-  removeSessionThinking();
-  
-  const el = document.createElement('div');
-  el.className = 'msg bot thinking';
-  el.id = 'session-thinking-indicator';
-  el.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>';
-  sessionMessagesEl.appendChild(el);
-  sessionMessagesEl.scrollTop = sessionMessagesEl.scrollHeight;
-}
-
-// Remove thinking indicator from session
-function removeSessionThinking() {
-  document.getElementById('session-thinking-indicator')?.remove();
-}
-
-// Send message in session page
-async function sendSessionMessage() {
-  const text = sessionInput.value.trim();
-  if (!text || sessionPageProcessing) return;
-  
-  sessionInput.value = '';
-  sessionInput.style.height = 'auto';
-  sessionSendBtn.classList.remove('active');
-  
-  sessionPageProcessing = true;
-  
-  // Add user message
-  addSessionMessage('user', text);
-  
-  // Show thinking
-  showSessionThinking();
-  
-  // Send via WebSocket
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'mode_message',
-      sparkMode: currentSessionMode,
-      text: text
-    }));
-  } else {
-    removeSessionThinking();
-    addSessionMessage('bot', 'Not connected. Please try again.');
-    sessionPageProcessing = false;
-  }
-}
-
-// Session input handlers
-sessionInput?.addEventListener('input', () => {
-  const hasText = sessionInput.value.trim().length > 0;
-  sessionSendBtn?.classList.toggle('active', hasText);
-  
-  // Auto-resize
-  sessionInput.style.height = 'auto';
-  sessionInput.style.height = Math.min(sessionInput.scrollHeight, 120) + 'px';
-});
-
-sessionInput?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendSessionMessage();
-  }
-});
-
-sessionSendBtn?.addEventListener('click', sendSessionMessage);
-
-sessionBackBtn?.addEventListener('click', hideSessionPage);
 
 // Check on load and every 10 seconds
 checkActiveSubagentSessions();
@@ -2768,29 +2310,80 @@ function viewActiveSession(session) {
   send(`Show me the recent activity from the ${session.label || 'subagent'} session (key: ${session.key})`, 'chat');
 }
 
-// Dev Mode button - navigate to session page
+// Dev Mode button (spawns isolated dev subagent)
 document.getElementById('devteam-btn')?.addEventListener('click', () => {
-  showSessionPage('dev');
+  showDevModeModal();
 });
 
-// Research Mode button - navigate to session page
+function showDevModeModal() {
+  const activeSession = getActiveSession('dev-mode');
+  createBottomSheet({
+    icon: '👨‍💻',
+    title: 'Dev Mode',
+    subtitle: activeSession ? '● Session running' : 'Isolated coding session',
+    placeholder: 'Describe the task or issues to fix...',
+    submitText: activeSession ? 'Start New Task' : 'Start Dev Mode',
+    activeSession,
+    onViewSession: viewActiveSession,
+    onSubmit: (task) => {
+      showChatFeedPage();
+      send(`/dev ${task}`, 'chat');
+    }
+  });
+}
+
+// Research Mode button (spawns isolated research subagent)
 document.getElementById('researcher-btn')?.addEventListener('click', () => {
-  showSessionPage('research');
+  showResearchModeModal();
 });
 
-// Plan Mode button - navigate to session page
+function showResearchModeModal() {
+  const activeSession = getActiveSession('research-mode');
+  createBottomSheet({
+    icon: '🔬',
+    title: 'Research Mode',
+    subtitle: activeSession ? '● Session running' : 'Deep research subagent',
+    placeholder: 'What would you like me to research?',
+    submitText: activeSession ? 'Start New Research' : 'Start Research',
+    activeSession,
+    onViewSession: viewActiveSession,
+    onSubmit: (topic) => {
+      showChatFeedPage();
+      send(`/research ${topic}`, 'chat');
+    }
+  });
+}
+
+// Plan Mode button (Feature spec generation)
 document.getElementById('plan-btn')?.addEventListener('click', () => {
-  showSessionPage('plan');
+  showPlanModeModal();
 });
 
-// Video Gen button - navigate to session page
+function showPlanModeModal() {
+  const activeSession = getActiveSession('plan-mode');
+  createBottomSheet({
+    icon: '📋',
+    title: 'Plan Mode',
+    subtitle: activeSession ? '● Session running' : 'Create detailed specs',
+    placeholder: 'What do you want to build?',
+    submitText: activeSession ? 'Start New Plan' : 'Start Planning',
+    activeSession,
+    onViewSession: viewActiveSession,
+    onSubmit: (topic) => {
+      const planRequest = `/plan ${topic}`;
+      showChatFeedPage();
+      send(planRequest, 'chat');
+    }
+  });
+}
+
+// Video Gen button
 document.getElementById('videogen-btn')?.addEventListener('click', () => {
-  showSessionPage('videogen');
+  showVideoGenModal();
 });
 
 /**
- * Video Gen modal - custom bottom sheet with workflow selection
- * Supports: Text to Video, Image to Video, Face Swap
+ * Video Gen modal - custom bottom sheet with image upload, aspect ratio, duration
  */
 function showVideoGenModal() {
   // Create overlay
@@ -2807,50 +2400,28 @@ function showVideoGenModal() {
       <span class="bottom-sheet-icon">🎬</span>
       <div class="bottom-sheet-titles">
         <h2 class="bottom-sheet-title">Video Gen</h2>
-        <p class="bottom-sheet-subtitle" id="videogen-subtitle">AI video generation</p>
+        <p class="bottom-sheet-subtitle">AI video from text or image</p>
       </div>
     </div>
     
     <div class="bottom-sheet-row">
-      <label class="bottom-sheet-label">Workflow</label>
-      <div class="option-selector" id="videogen-workflow">
-        <button class="option-pill selected" data-value="text2video">Text → Video</button>
-        <button class="option-pill" data-value="image2video">Image → Video</button>
-        <button class="option-pill" data-value="faceswap">Face Swap</button>
-      </div>
-    </div>
-    
-    <div class="bottom-sheet-row" id="videogen-prompt-row">
       <label class="bottom-sheet-label">Prompt</label>
       <textarea class="bottom-sheet-input" id="videogen-prompt" placeholder="Describe the video you want to create..." rows="2"></textarea>
     </div>
     
-    <div class="bottom-sheet-row" id="videogen-image-row" style="display:none;">
-      <label class="bottom-sheet-label" id="videogen-image-label">Reference Image</label>
+    <div class="bottom-sheet-row">
+      <label class="bottom-sheet-label">Reference Image (optional)</label>
       <div class="image-upload-area" id="videogen-upload-area">
         <div class="upload-icon">
           <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         </div>
         <div class="upload-text">Tap to upload image</div>
-        <div class="upload-hint" id="videogen-image-hint">For image-to-video generation</div>
+        <div class="upload-hint">For image-to-video generation</div>
       </div>
       <input type="file" id="videogen-file-input" accept="image/*" style="display:none">
     </div>
     
-    <div class="bottom-sheet-row" id="videogen-video-row" style="display:none;">
-      <label class="bottom-sheet-label">Target Video</label>
-      <div class="image-upload-area" id="videogen-video-upload-area">
-        <div class="upload-icon">
-          <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-        </div>
-        <div class="upload-text">Tap to upload video or paste URL</div>
-        <div class="upload-hint">YouTube/video URL or upload file</div>
-      </div>
-      <input type="file" id="videogen-video-file-input" accept="video/*" style="display:none">
-      <input type="text" class="bottom-sheet-input" id="videogen-video-url" placeholder="Or paste YouTube/video URL..." style="margin-top:8px; display:none;">
-    </div>
-    
-    <div class="bottom-sheet-row" id="videogen-aspect-row">
+    <div class="bottom-sheet-row">
       <label class="bottom-sheet-label">Aspect Ratio</label>
       <div class="option-selector" id="videogen-aspect">
         <button class="option-pill selected" data-value="16:9">16:9</button>
@@ -2859,7 +2430,7 @@ function showVideoGenModal() {
       </div>
     </div>
     
-    <div class="bottom-sheet-row" id="videogen-duration-row">
+    <div class="bottom-sheet-row">
       <label class="bottom-sheet-label">Duration</label>
       <div class="option-selector" id="videogen-duration">
         <button class="option-pill selected" data-value="5">5 seconds</button>
@@ -2873,35 +2444,19 @@ function showVideoGenModal() {
   document.body.appendChild(overlay);
   document.body.appendChild(sheet);
   
-  const subtitleEl = sheet.querySelector('#videogen-subtitle');
-  const workflowSelector = sheet.querySelector('#videogen-workflow');
-  const promptRow = sheet.querySelector('#videogen-prompt-row');
   const promptInput = sheet.querySelector('#videogen-prompt');
-  const imageRow = sheet.querySelector('#videogen-image-row');
-  const imageLabel = sheet.querySelector('#videogen-image-label');
-  const imageHint = sheet.querySelector('#videogen-image-hint');
   const uploadArea = sheet.querySelector('#videogen-upload-area');
   const fileInput = sheet.querySelector('#videogen-file-input');
-  const videoRow = sheet.querySelector('#videogen-video-row');
-  const videoUploadArea = sheet.querySelector('#videogen-video-upload-area');
-  const videoFileInput = sheet.querySelector('#videogen-video-file-input');
-  const videoUrlInput = sheet.querySelector('#videogen-video-url');
-  const aspectRow = sheet.querySelector('#videogen-aspect-row');
   const aspectSelector = sheet.querySelector('#videogen-aspect');
-  const durationRow = sheet.querySelector('#videogen-duration-row');
   const durationSelector = sheet.querySelector('#videogen-duration');
   const submitBtn = sheet.querySelector('#videogen-submit');
   const handle = sheet.querySelector('.bottom-sheet-handle');
   
   // State
-  let selectedWorkflow = 'text2video';
   let selectedAspect = '16:9';
   let selectedDuration = '5';
   let selectedImage = null;
   let selectedImageData = null;
-  let selectedVideo = null;
-  let selectedVideoData = null;
-  let selectedVideoUrl = null;
   
   // Close function with animation
   function close() {
@@ -2989,63 +2544,6 @@ function showVideoGenModal() {
   }
   document.addEventListener('keydown', handleKeydown);
   
-  // Helper function for file size
-  function formatFileSizeLocal(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
-  
-  // Update UI based on workflow
-  function updateWorkflowUI() {
-    // Reset visibility
-    promptRow.style.display = 'block';
-    imageRow.style.display = 'none';
-    videoRow.style.display = 'none';
-    aspectRow.style.display = 'block';
-    durationRow.style.display = 'block';
-    videoUrlInput.style.display = 'none';
-    
-    switch (selectedWorkflow) {
-      case 'text2video':
-        subtitleEl.textContent = 'Generate video from text prompt';
-        promptInput.placeholder = 'Describe the video you want to create...';
-        submitBtn.textContent = 'Generate Video';
-        break;
-      case 'image2video':
-        subtitleEl.textContent = 'Animate an image into video';
-        promptInput.placeholder = 'Describe the motion/action (optional)...';
-        imageRow.style.display = 'block';
-        imageLabel.textContent = 'Source Image';
-        imageHint.textContent = 'Image to animate';
-        submitBtn.textContent = 'Generate Video';
-        break;
-      case 'faceswap':
-        subtitleEl.textContent = 'Swap face in a video';
-        promptRow.style.display = 'none';
-        imageRow.style.display = 'block';
-        videoRow.style.display = 'block';
-        aspectRow.style.display = 'none';
-        durationRow.style.display = 'none';
-        imageLabel.textContent = 'Face Image';
-        imageHint.textContent = 'Photo with the face to use';
-        videoUrlInput.style.display = 'block';
-        submitBtn.textContent = 'Swap Face';
-        break;
-    }
-  }
-  
-  // Workflow selection
-  workflowSelector.addEventListener('click', (e) => {
-    const pill = e.target.closest('.option-pill');
-    if (!pill) return;
-    
-    workflowSelector.querySelectorAll('.option-pill').forEach(p => p.classList.remove('selected'));
-    pill.classList.add('selected');
-    selectedWorkflow = pill.dataset.value;
-    updateWorkflowUI();
-  });
-  
   // Aspect ratio selection
   aspectSelector.addEventListener('click', (e) => {
     const pill = e.target.closest('.option-pill');
@@ -3065,38 +2563,6 @@ function showVideoGenModal() {
     pill.classList.add('selected');
     selectedDuration = pill.dataset.value;
   });
-  
-  // Helper to reset image upload area
-  function resetImageUpload() {
-    selectedImage = null;
-    selectedImageData = null;
-    uploadArea.classList.remove('has-image');
-    uploadArea.innerHTML = `
-      <div class="upload-icon">
-        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      </div>
-      <div class="upload-text">Tap to upload image</div>
-      <div class="upload-hint" id="videogen-image-hint">${selectedWorkflow === 'faceswap' ? 'Photo with the face to use' : 'Image to animate'}</div>
-    `;
-    fileInput.value = '';
-  }
-  
-  // Helper to reset video upload area
-  function resetVideoUpload() {
-    selectedVideo = null;
-    selectedVideoData = null;
-    selectedVideoUrl = null;
-    videoUploadArea.classList.remove('has-image');
-    videoUploadArea.innerHTML = `
-      <div class="upload-icon">
-        <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-      </div>
-      <div class="upload-text">Tap to upload video or paste URL</div>
-      <div class="upload-hint">YouTube/video URL or upload file</div>
-    `;
-    videoFileInput.value = '';
-    videoUrlInput.value = '';
-  }
   
   // Image upload
   uploadArea.addEventListener('click', () => {
@@ -3134,138 +2600,61 @@ function showVideoGenModal() {
       // Add remove handler
       sheet.querySelector('#videogen-remove-image')?.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        resetImageUpload();
+        selectedImage = null;
+        selectedImageData = null;
+        uploadArea.classList.remove('has-image');
+        uploadArea.innerHTML = `
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="upload-text">Tap to upload image</div>
+          <div class="upload-hint">For image-to-video generation</div>
+        `;
+        fileInput.value = '';
       });
     };
     reader.readAsDataURL(file);
   });
   
-  // Video upload
-  videoUploadArea.addEventListener('click', () => {
-    if (!selectedVideo && !selectedVideoUrl) {
-      videoFileInput.click();
-    }
-  });
-  
-  videoFileInput.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    selectedVideo = file;
-    selectedVideoUrl = null;
-    
-    // Read as data URL
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      selectedVideoData = ev.target.result;
-      
-      // Update upload area to show preview
-      videoUploadArea.classList.add('has-image');
-      videoUploadArea.innerHTML = `
-        <div class="image-preview-container">
-          <div class="upload-icon" style="width:60px;height:60px;display:flex;align-items:center;justify-content:center;background:var(--msg-bot);border-radius:8px;">
-            <svg viewBox="0 0 24 24" style="width:30px;height:30px;stroke:var(--text-secondary);fill:none;"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-          </div>
-          <div class="image-preview-info">
-            <div class="image-preview-name">${file.name}</div>
-            <div class="image-preview-size">${formatFileSizeLocal(file.size)}</div>
-          </div>
-          <button class="image-remove-btn" id="videogen-remove-video">
-            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      `;
-      
-      // Add remove handler
-      sheet.querySelector('#videogen-remove-video')?.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        resetVideoUpload();
-      });
-    };
-    reader.readAsDataURL(file);
-  });
-  
-  // Video URL input
-  videoUrlInput.addEventListener('input', (e) => {
-    const url = e.target.value.trim();
-    if (url && (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('http'))) {
-      selectedVideoUrl = url;
-      selectedVideo = null;
-      selectedVideoData = null;
-      
-      // Show URL in upload area
-      videoUploadArea.classList.add('has-image');
-      videoUploadArea.innerHTML = `
-        <div class="image-preview-container">
-          <div class="upload-icon" style="width:60px;height:60px;display:flex;align-items:center;justify-content:center;background:var(--msg-bot);border-radius:8px;">
-            <svg viewBox="0 0 24 24" style="width:30px;height:30px;stroke:var(--text-secondary);fill:none;"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-          </div>
-          <div class="image-preview-info">
-            <div class="image-preview-name" style="word-break:break-all;">${url.length > 40 ? url.substring(0, 40) + '...' : url}</div>
-            <div class="image-preview-size">Video URL</div>
-          </div>
-          <button class="image-remove-btn" id="videogen-remove-video">
-            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      `;
-      
-      sheet.querySelector('#videogen-remove-video')?.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        resetVideoUpload();
-      });
-    }
-  });
+  // Helper function for file size
+  function formatFileSizeLocal(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
   
   // Submit handler
   submitBtn.addEventListener('click', () => {
     const prompt = promptInput.value.trim();
     
-    // Validate based on workflow
-    if (selectedWorkflow === 'text2video') {
-      if (!prompt) {
-        promptInput.classList.add('error');
-        setTimeout(() => promptInput.classList.remove('error'), 300);
-        return;
-      }
-    } else if (selectedWorkflow === 'image2video') {
-      if (!selectedImageData) {
-        uploadArea.style.borderColor = 'var(--red)';
-        setTimeout(() => uploadArea.style.borderColor = '', 300);
-        return;
-      }
-    } else if (selectedWorkflow === 'faceswap') {
-      if (!selectedImageData) {
-        uploadArea.style.borderColor = 'var(--red)';
-        setTimeout(() => uploadArea.style.borderColor = '', 300);
-        return;
-      }
-      if (!selectedVideoData && !selectedVideoUrl) {
-        videoUploadArea.style.borderColor = 'var(--red)';
-        setTimeout(() => videoUploadArea.style.borderColor = '', 300);
-        return;
-      }
+    if (!prompt && !selectedImage) {
+      promptInput.classList.add('error');
+      setTimeout(() => promptInput.classList.remove('error'), 300);
+      return;
     }
     
     close();
+    
+    // Build the command
+    let command = `/video`;
+    
+    // Add options
+    command += ` --ratio ${selectedAspect}`;
+    command += ` --duration ${selectedDuration}s`;
+    
+    // Add prompt
+    if (prompt) {
+      command += ` ${prompt}`;
+    }
+    
+    // Switch to chat feed and send
     showChatFeedPage();
     
-    // Build and send command based on workflow
-    if (selectedWorkflow === 'text2video') {
-      let command = `/video --ratio ${selectedAspect} --duration ${selectedDuration}s ${prompt}`;
-      send(command, 'chat');
-    } else if (selectedWorkflow === 'image2video') {
-      let command = `/video --ratio ${selectedAspect} --duration ${selectedDuration}s`;
-      if (prompt) command += ` ${prompt}`;
+    // If we have an image, send with image data
+    if (selectedImageData) {
       sendVideoGenWithImage(command, selectedImageData);
-    } else if (selectedWorkflow === 'faceswap') {
-      // Build face swap command
-      let command = `/faceswap`;
-      if (selectedVideoUrl) {
-        command += ` --video-url ${selectedVideoUrl}`;
-      }
-      // Send with image (and optionally video data)
-      sendFaceSwapRequest(command, selectedImageData, selectedVideoData, selectedVideoUrl);
+    } else {
+      send(command, 'chat');
     }
   });
   
@@ -3296,36 +2685,6 @@ function sendVideoGenWithImage(command, imageData) {
   showThinking();
   
   ws.send(JSON.stringify({ type: 'transcript', text: command, image: imageData, mode: 'chat' }));
-}
-
-// Send face swap request with image and video
-function sendFaceSwapRequest(command, imageData, videoData, videoUrl) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    toast('Not connected', true);
-    return;
-  }
-  isProcessing = true;
-  updateSparkPillText();
-  
-  // Show user message
-  const el = document.createElement('div');
-  el.className = 'msg user';
-  el.textContent = command + ' 🎭📷🎬';
-  messagesEl.appendChild(el);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  
-  trackDisplayedMessage(command);
-  showThinking();
-  
-  // Send with both image and video data/url
-  ws.send(JSON.stringify({ 
-    type: 'transcript', 
-    text: command, 
-    image: imageData, 
-    video: videoData,
-    videoUrl: videoUrl,
-    mode: 'chat' 
-  }));
 }
 
 // Override send for articulations mode
@@ -3382,12 +2741,11 @@ async function sendArticulation(text) {
 // NOTE: Articulations mode reset is now handled directly in showIntroPage()
 // (removed monkey-patch pattern for cleaner code and to prevent state issues)
 
-// Today's Reports button - enters daily reports mode session
+// Today's Reports button - shows all daily reports
 document.getElementById('todays-reports-btn')?.addEventListener('click', async () => {
-  // Enter daily reports mode session
-  await enterMode('dailyreports');
+  showChatFeedPage();
   
-  // Show today's reports as initial content
+  // Show loading
   const loadingEl = document.createElement('div');
   loadingEl.className = 'msg system';
   loadingEl.textContent = 'Loading today\'s reports...';
@@ -3400,8 +2758,10 @@ document.getElementById('todays-reports-btn')?.addEventListener('click', async (
     loadingEl.remove();
     
     if (!data.reports?.length) {
-      // If no reports, suggest generating one
-      send('Show me today\'s reports or generate a new briefing if none exist.', 'chat');
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'msg system';
+      emptyEl.textContent = 'No reports yet today';
+      messagesEl.appendChild(emptyEl);
       return;
     }
     
@@ -3554,7 +2914,7 @@ function sendWithImage(text, imageData) {
   isProcessing = true;
   
   // Show user message with image indicator
-  const userMsg = addMsg(text + ' 📷', 'user', { userInitiated: true });
+  const userMsg = addMsg(text + ' 📷', 'user');
   showThinking();
   
   ws.send(JSON.stringify({ type: 'transcript', text, image: imageData, mode: 'chat' }));
