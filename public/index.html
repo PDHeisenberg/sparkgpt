@@ -473,11 +473,35 @@
     #shortcuts {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 20px;
       align-items: flex-start;
       padding: 0;
       padding-bottom: 140px;
       transition: transform 0.3s ease;
+    }
+
+    /* Shortcut section containers */
+    .shortcut-section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .shortcut-section-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding-left: 4px;
+    }
+
+    .shortcut-section-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-start;
     }
 
     /* When keyboard is shown */
@@ -1910,48 +1934,54 @@
           <h1>Hi, Parth,<br>how can I help?</h1>
         </div>
         <div id="shortcuts">
-          <button class="shortcut" id="todays-reports-btn" aria-label="View daily reports">
-            <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
-            <div class="shortcut-content">
-              <span class="shortcut-title">Daily Reports</span>
-              <span class="shortcut-sub">Market updates & portfolio</span>
+          <!-- 🛠️ MODES Section -->
+          <div class="shortcut-section">
+            <div class="shortcut-section-header">🛠️ Modes</div>
+            <div class="shortcut-section-items">
+              <button class="shortcut" id="devteam-btn" aria-label="Start dev mode">
+                <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+                <div class="shortcut-content">
+                  <span class="shortcut-title">Dev Mode</span>
+                  <span class="shortcut-sub">Isolated coding sessions</span>
+                </div>
+              </button>
+              <button class="shortcut" id="researcher-btn" aria-label="Start research mode">
+                <svg class="shortcut-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <div class="shortcut-content">
+                  <span class="shortcut-title">Research Mode</span>
+                  <span class="shortcut-sub">Deep research subagent</span>
+                </div>
+              </button>
+              <button class="shortcut" id="plan-btn" aria-label="Start plan mode">
+                <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                <div class="shortcut-content">
+                  <span class="shortcut-title">Plan Mode</span>
+                  <span class="shortcut-sub">Create detailed specs</span>
+                </div>
+              </button>
             </div>
-          </button>
-          <button class="shortcut" id="articulations-btn" aria-label="View articulations">
-            <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <div class="shortcut-content">
-              <span class="shortcut-title">Articulations</span>
-              <span class="shortcut-sub">Refine your thinking</span>
+          </div>
+
+          <!-- 🎨 CREATE Section -->
+          <div class="shortcut-section">
+            <div class="shortcut-section-header">🎨 Create</div>
+            <div class="shortcut-section-items">
+              <button class="shortcut" id="videogen-btn" aria-label="Generate video">
+                <svg class="shortcut-icon" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+                <div class="shortcut-content">
+                  <span class="shortcut-title">Video Gen</span>
+                  <span class="shortcut-sub">AI video from text or image</span>
+                </div>
+              </button>
+              <button class="shortcut" id="articulations-btn" aria-label="View articulations">
+                <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <div class="shortcut-content">
+                  <span class="shortcut-title">Articulate</span>
+                  <span class="shortcut-sub">Refine your thinking</span>
+                </div>
+              </button>
             </div>
-          </button>
-          <button class="shortcut" id="devteam-btn" aria-label="Start dev mode">
-            <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
-            <div class="shortcut-content">
-              <span class="shortcut-title">Dev Mode</span>
-              <span class="shortcut-sub">Isolated coding sessions</span>
-            </div>
-          </button>
-          <button class="shortcut" id="researcher-btn" aria-label="Start research mode">
-            <svg class="shortcut-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-            <div class="shortcut-content">
-              <span class="shortcut-title">Research Mode</span>
-              <span class="shortcut-sub">Deep research subagent</span>
-            </div>
-          </button>
-          <button class="shortcut" id="plan-btn" aria-label="Start plan mode">
-            <svg class="shortcut-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-            <div class="shortcut-content">
-              <span class="shortcut-title">Plan Mode</span>
-              <span class="shortcut-sub">Create detailed specs</span>
-            </div>
-          </button>
-          <button class="shortcut" id="videogen-btn" aria-label="Generate video">
-            <svg class="shortcut-icon" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
-            <div class="shortcut-content">
-              <span class="shortcut-title">Video Gen</span>
-              <span class="shortcut-sub">AI video from text or image</span>
-            </div>
-          </button>
+          </div>
         </div>
       </div>
     </div>
