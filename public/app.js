@@ -2377,6 +2377,316 @@ function showPlanModeModal() {
   });
 }
 
+// Video Gen button
+document.getElementById('videogen-btn')?.addEventListener('click', () => {
+  showVideoGenModal();
+});
+
+/**
+ * Video Gen modal - custom bottom sheet with image upload, aspect ratio, duration
+ */
+function showVideoGenModal() {
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'bottom-sheet-overlay';
+  
+  // Create sheet
+  const sheet = document.createElement('div');
+  sheet.className = 'bottom-sheet';
+  
+  sheet.innerHTML = `
+    <div class="bottom-sheet-handle"></div>
+    <div class="bottom-sheet-header">
+      <span class="bottom-sheet-icon">🎬</span>
+      <div class="bottom-sheet-titles">
+        <h2 class="bottom-sheet-title">Video Gen</h2>
+        <p class="bottom-sheet-subtitle">AI video from text or image</p>
+      </div>
+    </div>
+    
+    <div class="bottom-sheet-row">
+      <label class="bottom-sheet-label">Prompt</label>
+      <textarea class="bottom-sheet-input" id="videogen-prompt" placeholder="Describe the video you want to create..." rows="2"></textarea>
+    </div>
+    
+    <div class="bottom-sheet-row">
+      <label class="bottom-sheet-label">Reference Image (optional)</label>
+      <div class="image-upload-area" id="videogen-upload-area">
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="upload-text">Tap to upload image</div>
+        <div class="upload-hint">For image-to-video generation</div>
+      </div>
+      <input type="file" id="videogen-file-input" accept="image/*" style="display:none">
+    </div>
+    
+    <div class="bottom-sheet-row">
+      <label class="bottom-sheet-label">Aspect Ratio</label>
+      <div class="option-selector" id="videogen-aspect">
+        <button class="option-pill selected" data-value="16:9">16:9</button>
+        <button class="option-pill" data-value="9:16">9:16</button>
+        <button class="option-pill" data-value="1:1">1:1</button>
+      </div>
+    </div>
+    
+    <div class="bottom-sheet-row">
+      <label class="bottom-sheet-label">Duration</label>
+      <div class="option-selector" id="videogen-duration">
+        <button class="option-pill selected" data-value="5">5 seconds</button>
+        <button class="option-pill" data-value="10">10 seconds</button>
+      </div>
+    </div>
+    
+    <button class="bottom-sheet-submit" id="videogen-submit">Generate Video</button>
+  `;
+  
+  document.body.appendChild(overlay);
+  document.body.appendChild(sheet);
+  
+  const promptInput = sheet.querySelector('#videogen-prompt');
+  const uploadArea = sheet.querySelector('#videogen-upload-area');
+  const fileInput = sheet.querySelector('#videogen-file-input');
+  const aspectSelector = sheet.querySelector('#videogen-aspect');
+  const durationSelector = sheet.querySelector('#videogen-duration');
+  const submitBtn = sheet.querySelector('#videogen-submit');
+  const handle = sheet.querySelector('.bottom-sheet-handle');
+  
+  // State
+  let selectedAspect = '16:9';
+  let selectedDuration = '5';
+  let selectedImage = null;
+  let selectedImageData = null;
+  
+  // Close function with animation
+  function close() {
+    sheet.classList.add('closing');
+    sheet.classList.remove('visible');
+    overlay.classList.remove('visible');
+    
+    setTimeout(() => {
+      overlay.remove();
+      sheet.remove();
+    }, 200);
+  }
+  
+  // Animate in after a frame
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      overlay.classList.add('visible');
+      sheet.classList.add('visible');
+      promptInput.focus();
+    });
+  });
+  
+  // Close on overlay tap
+  overlay.addEventListener('click', close);
+  
+  // Swipe to dismiss
+  let startY = 0;
+  let currentY = 0;
+  let isDragging = false;
+  
+  function handleTouchStart(e) {
+    const target = e.target;
+    if (target === handle || target === sheet && sheet.scrollTop === 0) {
+      startY = e.touches[0].clientY;
+      currentY = startY;
+      isDragging = true;
+      sheet.style.transition = 'none';
+    }
+  }
+  
+  function handleTouchMove(e) {
+    if (!isDragging) return;
+    currentY = e.touches[0].clientY;
+    const deltaY = currentY - startY;
+    
+    if (deltaY > 0) {
+      const isDesktop = window.innerWidth >= 520;
+      if (isDesktop) {
+        sheet.style.transform = `translateX(-50%) translateY(${deltaY}px)`;
+      } else {
+        sheet.style.transform = `translateY(${deltaY}px)`;
+      }
+    }
+  }
+  
+  function handleTouchEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    sheet.style.transition = '';
+    
+    const deltaY = currentY - startY;
+    
+    if (deltaY > 100) {
+      close();
+    } else {
+      const isDesktop = window.innerWidth >= 520;
+      if (isDesktop) {
+        sheet.style.transform = 'translateX(-50%) translateY(0)';
+      } else {
+        sheet.style.transform = 'translateY(0)';
+      }
+    }
+  }
+  
+  sheet.addEventListener('touchstart', handleTouchStart, { passive: true });
+  sheet.addEventListener('touchmove', handleTouchMove, { passive: true });
+  sheet.addEventListener('touchend', handleTouchEnd);
+  
+  // ESC to close
+  function handleKeydown(e) {
+    if (e.key === 'Escape') {
+      close();
+      document.removeEventListener('keydown', handleKeydown);
+    }
+  }
+  document.addEventListener('keydown', handleKeydown);
+  
+  // Aspect ratio selection
+  aspectSelector.addEventListener('click', (e) => {
+    const pill = e.target.closest('.option-pill');
+    if (!pill) return;
+    
+    aspectSelector.querySelectorAll('.option-pill').forEach(p => p.classList.remove('selected'));
+    pill.classList.add('selected');
+    selectedAspect = pill.dataset.value;
+  });
+  
+  // Duration selection
+  durationSelector.addEventListener('click', (e) => {
+    const pill = e.target.closest('.option-pill');
+    if (!pill) return;
+    
+    durationSelector.querySelectorAll('.option-pill').forEach(p => p.classList.remove('selected'));
+    pill.classList.add('selected');
+    selectedDuration = pill.dataset.value;
+  });
+  
+  // Image upload
+  uploadArea.addEventListener('click', () => {
+    if (!selectedImage) {
+      fileInput.click();
+    }
+  });
+  
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    selectedImage = file;
+    
+    // Read as data URL for preview and sending
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      selectedImageData = ev.target.result;
+      
+      // Update upload area to show preview
+      uploadArea.classList.add('has-image');
+      uploadArea.innerHTML = `
+        <div class="image-preview-container">
+          <img class="image-preview-thumb" src="${selectedImageData}" alt="Preview">
+          <div class="image-preview-info">
+            <div class="image-preview-name">${file.name}</div>
+            <div class="image-preview-size">${formatFileSizeLocal(file.size)}</div>
+          </div>
+          <button class="image-remove-btn" id="videogen-remove-image">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      `;
+      
+      // Add remove handler
+      sheet.querySelector('#videogen-remove-image')?.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        selectedImage = null;
+        selectedImageData = null;
+        uploadArea.classList.remove('has-image');
+        uploadArea.innerHTML = `
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="upload-text">Tap to upload image</div>
+          <div class="upload-hint">For image-to-video generation</div>
+        `;
+        fileInput.value = '';
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+  
+  // Helper function for file size
+  function formatFileSizeLocal(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+  
+  // Submit handler
+  submitBtn.addEventListener('click', () => {
+    const prompt = promptInput.value.trim();
+    
+    if (!prompt && !selectedImage) {
+      promptInput.classList.add('error');
+      setTimeout(() => promptInput.classList.remove('error'), 300);
+      return;
+    }
+    
+    close();
+    
+    // Build the command
+    let command = `/video`;
+    
+    // Add options
+    command += ` --ratio ${selectedAspect}`;
+    command += ` --duration ${selectedDuration}s`;
+    
+    // Add prompt
+    if (prompt) {
+      command += ` ${prompt}`;
+    }
+    
+    // Switch to chat feed and send
+    showChatFeedPage();
+    
+    // If we have an image, send with image data
+    if (selectedImageData) {
+      sendVideoGenWithImage(command, selectedImageData);
+    } else {
+      send(command, 'chat');
+    }
+  });
+  
+  // Auto-resize prompt input
+  promptInput.addEventListener('input', () => {
+    promptInput.style.height = 'auto';
+    promptInput.style.height = Math.min(promptInput.scrollHeight, 120) + 'px';
+  });
+}
+
+// Send video gen command with image attachment
+function sendVideoGenWithImage(command, imageData) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    toast('Not connected', true);
+    return;
+  }
+  isProcessing = true;
+  updateSparkPillText();
+  
+  // Show user message with image indicator
+  const el = document.createElement('div');
+  el.className = 'msg user';
+  el.textContent = command + ' 📷';
+  messagesEl.appendChild(el);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  
+  trackDisplayedMessage(command);
+  showThinking();
+  
+  ws.send(JSON.stringify({ type: 'transcript', text: command, image: imageData, mode: 'chat' }));
+}
+
 // Override send for articulations mode
 const originalSend = send;
 send = async function(text, sendMode) {
