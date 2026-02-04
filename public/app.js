@@ -8,8 +8,14 @@ import { CONFIG } from './modules/config.js';
 import { 
   trackDisplayedMessage, 
   isMessageDisplayed, 
-  formatMessage
+  formatMessage,
+  formatFileSize
 } from './modules/ui.js';
+import {
+  getRealtimeWsUrl,
+  float32ToBase64PCM16,
+  base64PCM16ToFloat32
+} from './modules/audio.js';
 
 // Elements
 const messagesEl = document.getElementById('messages');
@@ -906,43 +912,8 @@ function updateVoiceStatus(text) {
   }
 }
 
-// Build realtime WebSocket URL
-function getRealtimeWsUrl() {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const base = `${protocol}//${location.host}`;
-  const path = location.pathname.replace(/\/+$/, '');
-  return path && path !== '/' ? `${base}${path}/realtime` : `${base}/realtime`;
-}
-
-// Convert Float32Array to base64 PCM16
-function float32ToBase64PCM16(float32Array) {
-  const pcm16 = new Int16Array(float32Array.length);
-  for (let i = 0; i < float32Array.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32Array[i]));
-    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-  }
-  const bytes = new Uint8Array(pcm16.buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-// Convert base64 PCM16 to Float32Array
-function base64PCM16ToFloat32(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  const pcm16 = new Int16Array(bytes.buffer);
-  const float32 = new Float32Array(pcm16.length);
-  for (let i = 0; i < pcm16.length; i++) {
-    float32[i] = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7FFF);
-  }
-  return float32;
-}
+// Audio utilities imported from modules/audio.js:
+// getRealtimeWsUrl, float32ToBase64PCM16, base64PCM16ToFloat32
 
 // Play audio from queue (PCM16 format - legacy realtime mode)
 async function playAudioQueue() {
@@ -3589,11 +3560,7 @@ removeAttachmentBtn?.addEventListener('click', () => {
   }
 });
 
-function formatFileSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
+// formatFileSize is imported from modules/ui.js
 
 // Override submitText to handle attachments
 const originalSubmitText = submitText;
