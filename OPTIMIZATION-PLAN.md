@@ -9,8 +9,8 @@
 | Phase | Status | Date | Notes |
 |-------|--------|------|-------|
 | 1. Extract CSS | ✅ DONE | 2026-02-04 | Extracted 1,966 lines to `styles/main.css` |
-| 2. Modularize Frontend | 🔄 IN PROGRESS | 2026-02-04 | Extracting pure utilities |
-| 3. Modularize Backend | 🔲 TODO | - | Split server.js |
+| 2. Modularize Frontend | ⏸️ PAUSED | 2026-02-04 | Pure utilities extracted (-97 lines) |
+| 3. Modularize Backend | 🔄 IN PROGRESS | 2026-02-04 | 2 services extracted (-237 lines) |
 | 4. Dev Experience | 🔲 TODO | - | README, JSDoc |
 | 5. Performance | 🔲 TODO | - | Optional bundling |
 
@@ -49,6 +49,26 @@ To continue breaking down app.js further:
 3. Extract voice mode to `modules/voice.js`
 4. Extract notes mode to `modules/notes.js`
 5. Extract modals to `modules/modals.js`
+
+---
+
+### Phase 3 Progress (Backend Modularization)
+| Step | Module | Lines | Status |
+|------|--------|-------|--------|
+| 3.1 | services/gateway.js | 198 | ✅ Gateway communication, message queue |
+| 3.2 | services/session.js | 150 | ✅ Session file utilities |
+
+**Current server.js:** 1,867 → 1,630 lines (-237 lines, -12.7%)
+
+### What's Extracted (Backend)
+- Gateway: checkGatewayStatus, queueMessage, drainMessageQueue, sendToMainSession, isConnectingError
+- Session: loadGatewayToken, getMainSessionId, loadSessionHistory, appendToSessionSync, extractTextFromContent, hashMessage
+
+### Remaining in server.js
+- Express routes (~500 lines)
+- WebSocket handlers (~400 lines)
+- Chat/transcription logic (~400 lines)
+- File sync/polling (~200 lines)
 
 ---
 
