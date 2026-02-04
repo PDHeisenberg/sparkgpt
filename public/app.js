@@ -206,9 +206,7 @@ const notesRecording = document.getElementById('notes-recording');
 const notesResults = document.getElementById('notes-results');
 const notesTranscription = document.getElementById('notes-transcription');
 const notesSummary = document.getElementById('notes-summary');
-const notesNewBtn = document.getElementById('notes-new-btn');
-const notesSaveMemoryBtn = document.getElementById('notes-save-memory-btn');
-const notesSaveFileBtn = document.getElementById('notes-save-file-btn');
+const notesSaveBtn = document.getElementById('notes-save-btn');
 const notesDeleteBtn = document.getElementById('notes-delete-btn');
 const notesBackBtn = document.getElementById('notes-back-btn');
 
@@ -1627,36 +1625,8 @@ function exitNotesMode() {
   mode = 'chat';
 }
 
-// Save note to memory (MEMORY.md)
-async function saveNoteToMemory() {
-  if (!currentNoteData.transcription && !currentNoteData.summary) {
-    toast('No note to save', true);
-    return;
-  }
-  
-  try {
-    const res = await fetch('/api/notes/save-memory', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        transcription: currentNoteData.transcription,
-        summary: currentNoteData.summary,
-        timestamp: Date.now()
-      })
-    });
-    
-    if (res.ok) {
-      toast('Saved to memory ✓');
-    } else {
-      toast('Failed to save', true);
-    }
-  } catch (e) {
-    toast('Save failed', true);
-  }
-}
-
-// Save note to file
-async function saveNoteToFile() {
+// Save note to file (notes folder)
+async function saveNote() {
   if (!currentNoteData.transcription && !currentNoteData.summary) {
     toast('No note to save', true);
     return;
@@ -1675,7 +1645,8 @@ async function saveNoteToFile() {
     
     const data = await res.json();
     if (res.ok) {
-      toast(`Saved to ${data.filename || 'file'} ✓`);
+      toast('Note saved ✓');
+      exitNotesMode();
     } else {
       toast('Failed to save', true);
     }
@@ -1757,13 +1728,8 @@ closeNotesBtn?.addEventListener('click', () => {
 });
 deleteNotesBtn?.addEventListener('click', discardRecording);
 
-// Results action buttons
-notesNewBtn?.addEventListener('click', () => {
-  resetNotesView();
-  startRecording();
-});
-notesSaveMemoryBtn?.addEventListener('click', saveNoteToMemory);
-notesSaveFileBtn?.addEventListener('click', saveNoteToFile);
+// Results action buttons (Save, Delete, Back)
+notesSaveBtn?.addEventListener('click', saveNote);
 notesDeleteBtn?.addEventListener('click', deleteCurrentNote);
 notesBackBtn?.addEventListener('click', exitNotesMode);
 

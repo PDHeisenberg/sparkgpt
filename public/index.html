@@ -367,29 +367,31 @@
       display: none !important;
     }
 
+    /* Hide all other nav elements when showing notes results */
+    body.notes-results #voice-btn,
+    body.notes-results #notes-btn,
+    body.notes-results #input-bar,
+    body.notes-results #close-chat-btn {
+      display: none !important;
+    }
+
     /* Hide results buttons when recording */
-    body.notes-mode:not(.notes-results) #notes-save-memory-btn,
-    body.notes-mode:not(.notes-results) #notes-save-file-btn,
+    body.notes-mode:not(.notes-results) #notes-save-btn,
     body.notes-mode:not(.notes-results) #notes-delete-btn,
-    body.notes-mode:not(.notes-results) #notes-new-btn,
     body.notes-mode:not(.notes-results) #notes-back-btn {
       display: none !important;
     }
 
-    /* Show results buttons */
-    body.notes-results #notes-save-memory-btn,
-    body.notes-results #notes-save-file-btn,
+    /* Show only Save, Delete, Back buttons in results */
+    body.notes-results #notes-save-btn,
     body.notes-results #notes-delete-btn,
-    body.notes-results #notes-new-btn,
     body.notes-results #notes-back-btn {
       display: flex !important;
     }
 
-    /* Hide all notes buttons when not in notes mode */
-    #notes-save-memory-btn,
-    #notes-save-file-btn,
+    /* Hide all notes results buttons when not in notes mode */
+    #notes-save-btn,
     #notes-delete-btn,
-    #notes-new-btn,
     #notes-back-btn {
       display: none;
     }
@@ -2193,21 +2195,12 @@
         </svg>
       </button>
 
-      <!-- Notes mode: Results action buttons -->
-      <button id="notes-save-memory-btn" class="circle-btn" title="Save to Memory" aria-label="Save note to memory">
+      <!-- Notes mode: Results action buttons (Save, Delete, Back) -->
+      <button id="notes-save-btn" class="circle-btn" title="Save Note" aria-label="Save note">
         <svg viewBox="0 0 24 24">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
-        </svg>
-      </button>
-
-      <button id="notes-save-file-btn" class="circle-btn" title="Save to File" aria-label="Save note to file">
-        <svg viewBox="0 0 24 24">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <path d="M14 2v6h6"/>
-          <path d="M12 18v-6"/>
-          <path d="M9 15l3 3 3-3"/>
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
         </svg>
       </button>
 
@@ -2215,14 +2208,6 @@
         <svg viewBox="0 0 24 24">
           <polyline points="3 6 5 6 21 6"/>
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-        </svg>
-      </button>
-
-      <button id="notes-new-btn" class="circle-btn" title="New Note" aria-label="Record new note">
-        <svg viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="16"/>
-          <line x1="8" y1="12" x2="16" y2="12"/>
         </svg>
       </button>
 
