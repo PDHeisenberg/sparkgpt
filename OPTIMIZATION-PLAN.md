@@ -10,8 +10,8 @@
 |-------|--------|------|-------|
 | 1. Extract CSS | ✅ DONE | 2026-02-04 | Extracted 1,966 lines to `styles/main.css` |
 | 2. Modularize Frontend | ⏸️ PAUSED | 2026-02-04 | Pure utilities extracted (-97 lines) |
-| 3. Modularize Backend | 🔄 IN PROGRESS | 2026-02-04 | 2 services extracted (-237 lines) |
-| 4. Dev Experience | 🔲 TODO | - | README, JSDoc |
+| 3. Modularize Backend | ⏸️ PAUSED | 2026-02-04 | 2 services extracted (-237 lines) |
+| 4. Dev Experience | ✅ DONE | 2026-02-04 | README.md, package.json updated |
 | 5. Performance | 🔲 TODO | - | Optional bundling |
 
 ### Phase 1 Results

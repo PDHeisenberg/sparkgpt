@@ -1,10 +1,28 @@
 {
   "name": "sparkgpt",
   "version": "1.0.0",
+  "description": "Voice + Chat + Notes assistant powered by Claude & OpenAI",
   "type": "module",
+  "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "check": "node --check src/server.js",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "voice",
+    "chat",
+    "assistant",
+    "claude",
+    "openai",
+    "realtime"
+  ],
+  "author": "Parth Dhawan",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "ws": "^8.16.0",
