@@ -9,7 +9,8 @@ import {
   trackDisplayedMessage, 
   isMessageDisplayed, 
   formatMessage,
-  formatFileSize
+  formatFileSize,
+  extractMessageText
 } from './modules/ui.js';
 import {
   getRealtimeWsUrl,
@@ -411,16 +412,7 @@ function renderModeHistory(modeName) {
   scrollToBottom();
 }
 
-// Extract text from message content (handles various formats)
-function extractMessageText(msg) {
-  if (!msg?.content) return null;
-  if (typeof msg.content === 'string') return msg.content;
-  if (Array.isArray(msg.content)) {
-    const textPart = msg.content.find(c => c.type === 'text');
-    return textPart?.text || null;
-  }
-  return null;
-}
+// extractMessageText imported from modules/ui.js
 
 // Initialize mode system
 loadModeConfigs();
@@ -2474,7 +2466,7 @@ async function loadSessionHistory(mode, config) {
     } else {
       // Render messages
       for (const msg of messages) {
-        const text = extractSessionMessageText(msg);
+        const text = extractMessageText(msg);
         if (text) {
           addSessionMessage(msg.role === 'assistant' ? 'bot' : 'user', text);
         }
@@ -2494,16 +2486,7 @@ async function loadSessionHistory(mode, config) {
   }
 }
 
-// Extract text from message content
-function extractSessionMessageText(msg) {
-  if (!msg?.content) return null;
-  if (typeof msg.content === 'string') return msg.content;
-  if (Array.isArray(msg.content)) {
-    const textPart = msg.content.find(c => c.type === 'text');
-    return textPart?.text || null;
-  }
-  return null;
-}
+// extractMessageText (used here) imported from modules/ui.js
 
 // Add message to session page
 function addSessionMessage(type, text) {

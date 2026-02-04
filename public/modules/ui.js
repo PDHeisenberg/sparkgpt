@@ -141,3 +141,18 @@ export function formatFileSize(bytes) {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
+
+/**
+ * Extract text from message content (handles various formats)
+ * @param {Object} msg - Message object with content field
+ * @returns {string|null} Extracted text or null
+ */
+export function extractMessageText(msg) {
+  if (!msg?.content) return null;
+  if (typeof msg.content === 'string') return msg.content;
+  if (Array.isArray(msg.content)) {
+    const textPart = msg.content.find(c => c.type === 'text');
+    return textPart?.text || null;
+  }
+  return null;
+}
