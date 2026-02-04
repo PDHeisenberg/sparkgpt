@@ -2770,22 +2770,52 @@ function viewActiveSession(session) {
 
 // Dev Mode button - navigate to session page
 document.getElementById('devteam-btn')?.addEventListener('click', () => {
-  showSessionPage('dev');
+  const activeSession = getActiveSession('spark-dev-mode');
+  createBottomSheet({
+    icon: '👨‍💻',
+    title: 'Dev Mode',
+    subtitle: activeSession ? '● Session active' : 'Isolated coding session',
+    placeholder: 'Describe the task or issue to fix...',
+    submitText: 'Start Dev Session',
+    activeSession,
+    onViewSession: viewActiveSession,
+    onSubmit: (text) => send(`/dev ${text}`, 'chat')
+  });
 });
 
-// Research Mode button - navigate to session page
+// Research Mode button - popup modal
 document.getElementById('researcher-btn')?.addEventListener('click', () => {
-  showSessionPage('research');
+  const activeSession = getActiveSession('spark-research-mode');
+  createBottomSheet({
+    icon: '🔬',
+    title: 'Research Mode',
+    subtitle: activeSession ? '● Session active' : 'Deep dive research',
+    placeholder: 'What topic do you want to research?',
+    submitText: 'Start Research',
+    activeSession,
+    onViewSession: viewActiveSession,
+    onSubmit: (text) => send(`/research ${text}`, 'chat')
+  });
 });
 
-// Plan Mode button - navigate to session page
+// Plan Mode button - popup modal
 document.getElementById('plan-btn')?.addEventListener('click', () => {
-  showSessionPage('plan');
+  const activeSession = getActiveSession('spark-plan-mode');
+  createBottomSheet({
+    icon: '📋',
+    title: 'Plan Mode',
+    subtitle: activeSession ? '● Session active' : 'Create detailed specs',
+    placeholder: 'What do you want to plan?',
+    submitText: 'Start Planning',
+    activeSession,
+    onViewSession: viewActiveSession,
+    onSubmit: (text) => send(`/plan ${text}`, 'chat')
+  });
 });
 
-// Video Gen button - navigate to session page
+// Video Gen button - show modal with 3 variants
 document.getElementById('videogen-btn')?.addEventListener('click', () => {
-  showSessionPage('videogen');
+  showVideoGenModal();
 });
 
 /**
