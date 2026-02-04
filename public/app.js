@@ -3052,12 +3052,7 @@ function showVideoGenModal() {
   }
   document.addEventListener('keydown', handleKeydown);
   
-  // Helper function for file size
-  function formatFileSizeLocal(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
+  // formatFileSize imported from modules/ui.js
   
   // Update UI based on workflow
   function updateWorkflowUI() {
@@ -3186,7 +3181,7 @@ function showVideoGenModal() {
           <img class="image-preview-thumb" src="${selectedImageData}" alt="Preview">
           <div class="image-preview-info">
             <div class="image-preview-name">${file.name}</div>
-            <div class="image-preview-size">${formatFileSizeLocal(file.size)}</div>
+            <div class="image-preview-size">${formatFileSize(file.size)}</div>
           </div>
           <button class="image-remove-btn" id="videogen-remove-image">
             <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -3231,7 +3226,7 @@ function showVideoGenModal() {
           </div>
           <div class="image-preview-info">
             <div class="image-preview-name">${file.name}</div>
-            <div class="image-preview-size">${formatFileSizeLocal(file.size)}</div>
+            <div class="image-preview-size">${formatFileSize(file.size)}</div>
           </div>
           <button class="image-remove-btn" id="videogen-remove-video">
             <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
