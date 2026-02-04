@@ -37,77 +37,93 @@
 
 ---
 
-## Phase 1: Extract CSS (Easy Win)
-**Effort:** 1-2 hours | **Impact:** High
+## Phase 1: Extract CSS ✅ COMPLETE
+**Status:** Done on 2026-02-04
 
-Currently all CSS is inline in `index.html` making it 2,305 lines.
-
-### Actions:
-1. Create `public/styles/main.css`
-2. Extract all `<style>` content from index.html
-3. Add `<link rel="stylesheet" href="styles/main.css">`
-4. Result: `index.html` drops to ~800 lines (pure HTML)
-
-### Optional - Split CSS further:
-```
-public/styles/
-├── main.css          # Base styles, variables, layout
-├── themes.css        # Light/dark theme variables
-├── chat.css          # Chat mode styles
-├── voice.css         # Voice mode styles
-├── notes.css         # Notes mode styles
-└── components.css    # Buttons, modals, sheets
-```
+- Created `public/styles/main.css` (1,966 lines)
+- `index.html` reduced from 2,305 → 338 lines
+- CSS served via `<link rel="stylesheet" href="styles/main.css">`
 
 ---
 
-## Phase 2: Modularize Frontend (Medium)
+## Phase 2: Modularize Frontend 🔲 IN PROGRESS
 **Effort:** 4-6 hours | **Impact:** High
 
-Split `app.js` (3,712 lines) into logical modules.
+Split `app.js` (3,712 lines, 115 functions) into logical modules.
 
-### Current Sections in app.js:
-1. Config & State (lines 1-260)
-2. Mode Session State (267-430)
-3. Page State Management (431-605)
-4. UI Components (606-700)
-5. Messages (700-830)
-6. Voice Mode (833-1525)
-7. Chat Mode (1526-1574)
-8. Notes Mode (1575-1745)
-9. WebSocket (1746-2080)
-10. Audio (2081-2193)
-11. Context Menu (2194-2340)
-12. PC Status / Wake (2342-2430)
-13. Session Pages (2432-2700)
-14. Bottom Sheets / Modals (2700-3500)
-15. File Handling (3500-3712)
+### Current Sections in app.js (with line numbers):
+```
+Lines 1-34:      Imports, CONFIG object
+Lines 35-113:    Spark status, sessions popup
+Lines 114-266:   Theme, mode helpers
+Lines 267-430:   MODE SESSION STATE
+Lines 431-605:   PAGE STATE MANAGEMENT (intro, chatfeed)
+Lines 606-697:   Close button, pull-down gesture
+Lines 698-832:   MESSAGES (addMsg, formatMessage, thinking)
+Lines 833-1525:  VOICE MODE (realtime API, audio queue)
+Lines 1526-1574: CHAT MODE (submitText)
+Lines 1575-1745: NOTES MODE (recording, save, delete)
+Lines 1746-2080: WEBSOCKET (connect, send, handle)
+Lines 2081-2193: AUDIO (playAudio)
+Lines 2194-2340: MESSAGE CONTEXT MENU
+Lines 2342-2430: PC STATUS / WAKE
+Lines 2432-2687: SESSION PAGES
+Lines 2688-3430: BOTTOM SHEETS / MODALS (video gen, face swap)
+Lines 3431-3712: FILE HANDLING, init
+```
+
+### Module Extraction Order (do one at a time):
+1. `modules/config.js` - Lines 1-34 (CONFIG, constants)
+2. `modules/ui.js` - Lines 698-832 (addMsg, toast, status, thinking)
+3. `modules/audio.js` - Lines 2081-2193 + 833-1030 (audio playback)
+4. `modules/websocket.js` - Lines 1746-2080 (WS connection)
+5. `modules/voice.js` - Lines 1031-1525 (voice mode logic)
+6. `modules/notes.js` - Lines 1575-1745 (notes recording)
+7. `modules/pages.js` - Lines 431-697 (page navigation)
+8. `modules/modals.js` - Lines 2688-3430 (bottom sheets)
+9. `modules/state.js` - Lines 267-430 (mode session state)
+10. `modules/utils.js` - Lines 3431-3712 (file handling, helpers)
 
 ### Proposed Structure:
 ```
 public/
-├── app.js                 # Main entry, imports modules
+├── app.js                 # Main entry (~200 lines)
 ├── modules/
-│   ├── config.js          # CONFIG, state variables
-│   ├── state.js           # Session state, mode management
-│   ├── ui.js              # DOM helpers, toast, status
-│   ├── pages.js           # Page navigation (intro, chat, etc.)
-│   ├── messages.js        # Message rendering, formatting
-│   ├── voice.js           # Voice mode, realtime API
-│   ├── chat.js            # Chat mode logic
-│   ├── notes.js           # Notes recording/transcription
+│   ├── config.js          # CONFIG, constants
+│   ├── ui.js              # DOM helpers, toast, status, messages
+│   ├── audio.js           # Audio playback, TTS queue
 │   ├── websocket.js       # WS connection, handlers
-│   ├── audio.js           # Audio playback, TTS
+│   ├── voice.js           # Voice mode, realtime API
+│   ├── notes.js           # Notes recording/transcription
+│   ├── pages.js           # Page navigation
 │   ├── modals.js          # Bottom sheets, video gen
-│   └── utils.js           # Helpers, file handling
+│   ├── state.js           # Session state, mode management
+│   └── utils.js           # File handling, helpers
 └── styles/
     └── main.css
 ```
 
-### Implementation:
-- Use ES6 modules (`import`/`export`)
-- Keep `app.js` as orchestrator (~200 lines)
-- Each module: 200-400 lines max
+### How to Extract a Module:
+1. Create `public/modules/[name].js`
+2. Copy the relevant functions
+3. Add `export` to each function
+4. In `app.js`, add `import { fn1, fn2 } from './modules/[name].js'`
+5. Test in browser, fix any missing dependencies
+6. Commit after each module
+
+### Shared State Pattern:
+```javascript
+// modules/state.js
+export const state = {
+  ws: null,
+  currentMode: 'chat',
+  sessions: {},
+  // ... etc
+};
+
+// Other modules import state:
+import { state } from './state.js';
+```
 
 ---
 
