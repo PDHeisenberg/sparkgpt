@@ -319,7 +319,6 @@
       display: none;
       flex-direction: column;
       width: 100%;
-      height: 100%;
       padding: 16px;
       padding-bottom: 100px;
       overflow-y: auto;
@@ -333,26 +332,27 @@
       display: flex;
     }
 
+    /* Override notes-content centering for results view */
+    body.notes-results #notes-content {
+      align-items: stretch;
+      justify-content: flex-start;
+    }
+
     #notes-messages {
       display: flex;
       flex-direction: column;
       gap: 12px;
+      width: 100%;
     }
 
-    /* Transcription - left side, grey */
+    /* Transcription - left side, grey (same as .msg.bot) */
     #notes-transcription-msg {
       align-self: flex-start;
-      max-width: 85%;
-      background: var(--msg-bot);
-      color: var(--text);
     }
 
     /* Summary - right side, grey */
     #notes-summary-msg {
       align-self: flex-end;
-      max-width: 85%;
-      background: var(--msg-bot);
-      color: var(--text);
     }
 
     .notes-status {
