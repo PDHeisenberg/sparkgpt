@@ -12,7 +12,7 @@
 | 2. Modularize Frontend | ⏸️ PAUSED | 2026-02-04 | Pure utilities extracted (-97 lines) |
 | 3. Modularize Backend | ⏸️ PAUSED | 2026-02-04 | 2 services extracted (-237 lines) |
 | 4. Dev Experience | ✅ DONE | 2026-02-04 | README.md, package.json updated |
-| 5. Performance | 🔲 TODO | - | Optional bundling |
+| 5. Performance | ✅ DONE | 2026-02-04 | Compression + bundling (87% reduction) |
 
 ### Phase 1 Results
 - `index.html`: 2,305 → 338 lines ✅
@@ -69,6 +69,26 @@ To continue breaking down app.js further:
 - WebSocket handlers (~400 lines)
 - Chat/transcription logic (~400 lines)
 - File sync/polling (~200 lines)
+
+---
+
+### Phase 5 Results (Performance)
+
+| Optimization | Before | After | Reduction |
+|--------------|--------|-------|-----------|
+| JS bundle | 117KB | 54KB | -54% |
+| JS gzipped | - | 15KB | **-87%** |
+| CSS minified | 48KB | 31KB | -35% |
+| Compression | ❌ | ✅ gzip | Enabled |
+| Caching | ❌ | ✅ 1 hour | Enabled |
+
+**Build command:** `npm run build`
+
+**Improvements:**
+- Gzip compression for all responses
+- 1-hour cache for static files (CSS, JS)
+- Bundled all JS modules into single file
+- Minified CSS
 
 ---
 
