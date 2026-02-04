@@ -204,7 +204,10 @@ const closeNotesBtn = document.getElementById('close-notes-btn');
 const deleteNotesBtn = document.getElementById('delete-notes-btn');
 const notesRecording = document.getElementById('notes-recording');
 const notesResults = document.getElementById('notes-results');
+const notesStatus = document.getElementById('notes-status');
+const notesTranscriptionMsg = document.getElementById('notes-transcription-msg');
 const notesTranscription = document.getElementById('notes-transcription');
+const notesSummaryMsg = document.getElementById('notes-summary-msg');
 const notesSummary = document.getElementById('notes-summary');
 const notesSaveBtn = document.getElementById('notes-save-btn');
 const notesDeleteBtn = document.getElementById('notes-delete-btn');
@@ -1685,10 +1688,14 @@ async function finishRecording() {
   const duration = Math.floor((Date.now() - recordStart) / 1000);
   releaseMicrophone();
   
-  // Switch to results view
+  // Switch to results view with "Transcribing..." status
   document.body.classList.add('notes-results');
-  if (notesTranscription) notesTranscription.textContent = 'Processing...';
-  if (notesSummary) notesSummary.textContent = '';
+  if (notesStatus) {
+    notesStatus.textContent = 'Transcribing...';
+    notesStatus.style.display = 'block';
+  }
+  if (notesTranscriptionMsg) notesTranscriptionMsg.style.display = 'none';
+  if (notesSummaryMsg) notesSummaryMsg.style.display = 'none';
   currentNoteData = { transcription: '', summary: '' };
   
   const reader = new FileReader();
@@ -1710,6 +1717,9 @@ function sendNote(audio, duration) {
 function resetNotesView() {
   document.body.classList.remove('notes-results');
   if (notesTimerEl) notesTimerEl.textContent = '0:00';
+  if (notesStatus) notesStatus.style.display = 'block';
+  if (notesTranscriptionMsg) notesTranscriptionMsg.style.display = 'none';
+  if (notesSummaryMsg) notesSummaryMsg.style.display = 'none';
   if (notesTranscription) notesTranscription.textContent = '';
   if (notesSummary) notesSummary.textContent = '';
   currentNoteData = { transcription: '', summary: '' };
@@ -1984,8 +1994,11 @@ function handle(data) {
       // Route to notes view if in notes mode
       if (document.body.classList.contains('notes-mode') && notesSummary) {
         if (data.content) {
+          // Hide status, show summary message
+          if (notesStatus) notesStatus.style.display = 'none';
           notesSummary.innerHTML = formatMessage(data.content);
           currentNoteData.summary = data.content;
+          if (notesSummaryMsg) notesSummaryMsg.style.display = 'block';
         }
       }
       // Route to session page if active
@@ -2013,8 +2026,11 @@ function handle(data) {
     case 'transcription':
       // Check if we're in notes mode - show in notes view
       if (document.body.classList.contains('notes-mode') && notesTranscription) {
+        // Show transcription message, update status to "Summarizing..."
         notesTranscription.textContent = data.text;
         currentNoteData.transcription = data.text;
+        if (notesTranscriptionMsg) notesTranscriptionMsg.style.display = 'block';
+        if (notesStatus) notesStatus.textContent = 'Summarizing...';
       } else {
         const transSys = messagesEl?.querySelector('.msg.system:last-child');
         if (transSys?.textContent === 'Transcribing...') transSys.remove();

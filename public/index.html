@@ -344,21 +344,12 @@
       max-width: 90%;
     }
 
-    .note-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--accent);
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    #notes-transcription-msg {
-      opacity: 0.8;
-    }
-
-    #notes-transcription-msg .note-label {
+    .notes-status {
+      text-align: center;
+      padding: 40px 20px;
+      font-size: 16px;
       color: var(--text-dim);
+      font-weight: 500;
     }
 
     /* Hide recording buttons when showing results */
@@ -2111,14 +2102,14 @@
       <!-- Results view (chat-style) -->
       <div id="notes-results">
         <div id="notes-messages">
-          <!-- Transcription message -->
-          <div class="msg bot" id="notes-transcription-msg">
-            <div class="note-label">📝 Transcription</div>
+          <!-- Status shown during processing -->
+          <div id="notes-status" class="notes-status">Transcribing...</div>
+          <!-- Transcription as plain chat message -->
+          <div class="msg bot" id="notes-transcription-msg" style="display:none;">
             <div id="notes-transcription"></div>
           </div>
-          <!-- Summary message -->
-          <div class="msg bot" id="notes-summary-msg">
-            <div class="note-label">✨ Summary</div>
+          <!-- Summary as plain chat message -->
+          <div class="msg bot" id="notes-summary-msg" style="display:none;">
             <div id="notes-summary"></div>
           </div>
         </div>
