@@ -306,6 +306,105 @@
       font-weight: 500;
     }
 
+    /* Notes recording view */
+    #notes-recording {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    /* Notes results view */
+    #notes-results {
+      width: 100%;
+      max-width: 600px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      text-align: left;
+    }
+
+    #notes-results-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #notes-results-header .notes-icon {
+      font-size: 28px;
+    }
+
+    #notes-results-header .notes-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    #notes-transcription {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 14px;
+      color: var(--text-dim);
+      line-height: 1.6;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    #notes-transcription::before {
+      content: 'Transcription';
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    #notes-summary {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 15px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    #notes-summary::before {
+      content: 'Summary';
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .notes-action-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+
+    .notes-action-btn:hover {
+      opacity: 0.9;
+    }
+
+    .notes-action-btn:active {
+      transform: scale(0.98);
+    }
+
     .msg {
       max-width: 85%;
       padding: 14px 18px;
@@ -2004,17 +2103,30 @@
 
     <!-- Notes mode content -->
     <div id="notes-content">
-      <div class="timer" id="notes-timer">0:00</div>
-      <div class="waveform">
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
+      <!-- Recording view -->
+      <div id="notes-recording">
+        <div class="timer" id="notes-timer">0:00</div>
+        <div class="waveform">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+        <div class="status">Recording...</div>
       </div>
-      <div class="status">Recording...</div>
+      <!-- Results view (shown after transcription) -->
+      <div id="notes-results" style="display:none;">
+        <div id="notes-results-header">
+          <span class="notes-icon">📝</span>
+          <span class="notes-title">Voice Note</span>
+        </div>
+        <div id="notes-transcription"></div>
+        <div id="notes-summary"></div>
+        <button id="notes-new-btn" class="notes-action-btn">New Note</button>
+      </div>
     </div>
 
     <div id="status"></div>

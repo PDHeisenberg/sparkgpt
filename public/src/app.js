@@ -1,19 +1,10 @@
 /**
- * Spark - Minimal Voice + Chat + Notes
+ * Spark Voice v2.0 - Modular Refactor (Step 1: CONFIG extracted)
  */
 
-const CONFIG = {
-  // Build WebSocket URL - include pathname for subpath routing (e.g., /voice)
-  wsUrl: (() => {
-    // Use wss:// for HTTPS, ws:// for HTTP
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const base = `${protocol}//${location.host}`;
-    // If we're on a subpath like /voice, include it
-    const path = location.pathname.replace(/\/+$/, ''); // remove trailing slashes
-    return path && path !== '/' ? `${base}${path}` : base;
-  })(),
-  silenceMs: 1500,
-};
+import { CONFIG, MODE_DEFAULTS } from './config.js';
+
+console.log('⚡ Spark Voice v2.0 (Step 1: CONFIG extracted)');
 
 // Elements
 const messagesEl = document.getElementById('messages');
@@ -202,11 +193,6 @@ const notesTimerEl = document.getElementById('notes-timer');
 const notesBar = document.getElementById('notes-bar');
 const closeNotesBtn = document.getElementById('close-notes-btn');
 const deleteNotesBtn = document.getElementById('delete-notes-btn');
-const notesRecording = document.getElementById('notes-recording');
-const notesResults = document.getElementById('notes-results');
-const notesTranscription = document.getElementById('notes-transcription');
-const notesSummary = document.getElementById('notes-summary');
-const notesNewBtn = document.getElementById('notes-new-btn');
 const closeBtn = document.getElementById('close-btn');
 const historyBtn = document.getElementById('history-btn');
 const themeBtn = document.getElementById('theme-btn');
@@ -238,6 +224,26 @@ themeBtn?.addEventListener('click', () => {
   localStorage.setItem('theme', newTheme);
 });
 
+// Model toggle (Claude <-> Kimi)
+const modelBtn = document.getElementById('model-btn');
+let currentModel = localStorage.getItem('ai-model') || 'claude';
+
+function updateModelButton() {
+  const label = modelBtn?.querySelector('.model-label');
+  if (label) {
+    label.textContent = currentModel === 'kimi' ? 'Kimi' : 'Claude';
+  }
+  modelBtn?.classList.toggle('kimi', currentModel === 'kimi');
+}
+updateModelButton();
+
+modelBtn?.addEventListener('click', () => {
+  currentModel = currentModel === 'claude' ? 'kimi' : 'claude';
+  localStorage.setItem('ai-model', currentModel);
+  updateModelButton();
+  showToast(`Switched to ${currentModel === 'kimi' ? 'Kimi K2.5' : 'Claude'}`);
+});
+
 // State
 let ws = null;
 let mode = 'chat';
@@ -264,14 +270,6 @@ let modeHistory = {}; // Cache history per mode
 let modeConfigs = {}; // Loaded from server
 
 // Mode configuration (will be loaded from server, fallback here)
-const MODE_DEFAULTS = {
-  dev: { name: 'Dev Mode', icon: '👨‍💻', notifyWhatsApp: true },
-  research: { name: 'Research Mode', icon: '🔬', notifyWhatsApp: true },
-  plan: { name: 'Plan Mode', icon: '📋', notifyWhatsApp: true },
-  articulate: { name: 'Articulate Mode', icon: '✍️', notifyWhatsApp: false },
-  dailyreports: { name: 'Daily Reports', icon: '📊', notifyWhatsApp: true },
-  videogen: { name: 'Video Gen', icon: '🎬', notifyWhatsApp: true }
-};
 
 // Load mode configs from server
 async function loadModeConfigs() {
@@ -1606,16 +1604,8 @@ function stopRecording() {
   if (mediaRecorder?.state !== 'recording') return;
   mediaRecorder.stop();
   clearInterval(timerInterval);
-  // Keep notes-mode active to show results
-  // User can exit via close button or "New Note"
-  bottomEl?.classList.remove('notes-active');
-}
-
-// Exit notes mode completely
-function exitNotesMode() {
   document.body.classList.remove('notes-mode');
   bottomEl?.classList.remove('notes-active');
-  resetNotesView();
   mode = 'chat';
 }
 
@@ -1639,15 +1629,7 @@ async function finishRecording() {
   const blob = new Blob(audioChunks, { type: 'audio/webm' });
   const duration = Math.floor((Date.now() - recordStart) / 1000);
   releaseMicrophone();
-  
-  // Show processing state in notes view
-  if (notesRecording) notesRecording.style.display = 'none';
-  if (notesResults) {
-    notesResults.style.display = 'flex';
-    if (notesTranscription) notesTranscription.textContent = 'Processing...';
-    if (notesSummary) notesSummary.textContent = '';
-  }
-  
+  addMsg(`🎙️ Voice note (${Math.floor(duration/60)}:${(duration%60).toString().padStart(2,'0')})`, 'system');
   const reader = new FileReader();
   reader.onload = () => sendNote(reader.result.split(',')[1], duration);
   reader.readAsDataURL(blob);
@@ -1659,38 +1641,13 @@ function sendNote(audio, duration) {
     return;
   }
   isProcessing = true;
-  // Don't add to main chat - results will show in notes view
+  addMsg('Transcribing...', 'system');
   ws.send(JSON.stringify({ type: 'voice_note', audio, duration }));
 }
 
-// Reset notes view to recording state
-function resetNotesView() {
-  if (notesRecording) notesRecording.style.display = 'flex';
-  if (notesResults) notesResults.style.display = 'none';
-  if (notesTimerEl) notesTimerEl.textContent = '0:00';
-  if (notesTranscription) notesTranscription.textContent = '';
-  if (notesSummary) notesSummary.textContent = '';
-}
-
-notesBtn?.addEventListener('click', () => { 
-  if (isListening) stopVoice(); 
-  resetNotesView();
-  startRecording(); 
-});
-closeNotesBtn?.addEventListener('click', () => {
-  // If recording, stop and process
-  if (mediaRecorder?.state === 'recording') {
-    stopRecording();
-  } else {
-    // If showing results, exit notes mode
-    exitNotesMode();
-  }
-});
+notesBtn?.addEventListener('click', () => { if (isListening) stopVoice(); startRecording(); });
+closeNotesBtn?.addEventListener('click', stopRecording);
 deleteNotesBtn?.addEventListener('click', discardRecording);
-notesNewBtn?.addEventListener('click', () => {
-  resetNotesView();
-  startRecording();
-});
 
 // ============================================================================
 // WEBSOCKET
@@ -1859,7 +1816,7 @@ async function send(text, sendMode) {
     ws.send(JSON.stringify({ type: 'mode_message', sparkMode: currentSparkMode, text }));
   } else {
     // Send to main session
-    ws.send(JSON.stringify({ type: 'transcript', text, mode: sendMode }));
+    ws.send(JSON.stringify({ type: 'transcript', text, mode: sendMode, model: currentModel }));
   }
 }
 
@@ -1940,14 +1897,8 @@ function handle(data) {
       break;
     case 'text':
       console.log('✅ Text message received:', data.content?.slice?.(0, 100));
-      // Route to notes view if in notes mode
-      if (document.body.classList.contains('notes-mode') && notesSummary) {
-        if (data.content) {
-          notesSummary.innerHTML = formatMessage(data.content);
-        }
-      }
       // Route to session page if active
-      else if (currentSessionMode && sessionPage.classList.contains('show')) {
+      if (currentSessionMode && sessionPage.classList.contains('show')) {
         removeSessionThinking();
         if (data.content) {
           addSessionMessage('bot', data.content);
@@ -1969,14 +1920,9 @@ function handle(data) {
       }
       break;
     case 'transcription':
-      // Check if we're in notes mode - show in notes view
-      if (document.body.classList.contains('notes-mode') && notesTranscription) {
-        notesTranscription.textContent = data.text;
-      } else {
-        const transSys = messagesEl?.querySelector('.msg.system:last-child');
-        if (transSys?.textContent === 'Transcribing...') transSys.remove();
-        addMsg('📝 ' + data.text, 'bot');
-      }
+      const transSys = messagesEl?.querySelector('.msg.system:last-child');
+      if (transSys?.textContent === 'Transcribing...') transSys.remove();
+      addMsg('📝 ' + data.text, 'bot');
       break;
     case 'audio': playAudio(data.data); break;
     case 'done':
@@ -3387,7 +3333,7 @@ function sendVideoGenWithImage(command, imageData) {
   trackDisplayedMessage(command);
   showThinking();
   
-  ws.send(JSON.stringify({ type: 'transcript', text: command, image: imageData, mode: 'chat' }));
+  ws.send(JSON.stringify({ type: 'transcript', text: command, image: imageData, mode: 'chat', model: currentModel }));
 }
 
 // Send face swap request with image and video
@@ -3416,7 +3362,8 @@ function sendFaceSwapRequest(command, imageData, videoData, videoUrl) {
     image: imageData, 
     video: videoData,
     videoUrl: videoUrl,
-    mode: 'chat' 
+    mode: 'chat',
+    model: currentModel 
   }));
 }
 
@@ -3649,5 +3596,5 @@ function sendWithImage(text, imageData) {
   const userMsg = addMsg(text + ' 📷', 'user', { userInitiated: true });
   showThinking();
   
-  ws.send(JSON.stringify({ type: 'transcript', text, image: imageData, mode: 'chat' }));
+  ws.send(JSON.stringify({ type: 'transcript', text, image: imageData, mode: 'chat', model: currentModel }));
 }
