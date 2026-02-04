@@ -24,9 +24,31 @@
 | 2.1 | modules/config.js | 16 | ✅ CONFIG object |
 | 2.2 | modules/ui.js | 158 | ✅ Message utils, formatters |
 | 2.3 | modules/audio.js | 54 | ✅ Audio conversion utils |
-| 2.4 | Deduplication | - | ✅ Removed duplicate code |
+| 2.4 | Deduplication | - | ✅ Removed duplicate extractSessionMessageText |
+| 2.5 | Deduplication | - | ✅ Removed duplicate formatFileSizeLocal |
 
-**Current app.js:** 3,712 → 3,620 lines (-92 lines, -2.5%)
+**Current app.js:** 3,712 → 3,615 lines (-97 lines, -2.6%)
+
+### What's Extracted
+- CONFIG object
+- trackDisplayedMessage, isMessageDisplayed
+- formatMessage, formatFileSize
+- extractMessageText
+- getRealtimeWsUrl, float32ToBase64PCM16, base64PCM16ToFloat32
+
+### Remaining in app.js (DOM/State dependent)
+Most remaining code depends on DOM elements or shared state. Further extraction needs:
+1. State module (ws, mode, pageState, etc.)
+2. Pass DOM refs as parameters
+3. More significant refactoring
+
+### Next Steps for Deeper Modularization
+To continue breaking down app.js further:
+1. Create `modules/state.js` to centralize shared state
+2. Extract page navigation to `modules/pages.js`
+3. Extract voice mode to `modules/voice.js`
+4. Extract notes mode to `modules/notes.js`
+5. Extract modals to `modules/modals.js`
 
 ---
 
