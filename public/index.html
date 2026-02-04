@@ -319,6 +319,8 @@
       display: none;
       flex-direction: column;
       width: 100%;
+      height: auto;
+      flex-grow: 0;
       padding: 16px;
       padding-bottom: 100px;
       overflow-y: auto;
@@ -332,10 +334,11 @@
       display: flex;
     }
 
-    /* Override notes-content centering for results view */
+    /* Override notes-content for results view - prevent stretching */
     body.notes-results #notes-content {
-      align-items: stretch;
+      align-items: flex-start;
       justify-content: flex-start;
+      gap: 0;
     }
 
     #notes-messages {
@@ -345,12 +348,19 @@
       width: 100%;
     }
 
-    /* Transcription - left side, grey (same as .msg.bot) */
+    /* Prevent flex stretching on note messages */
+    #notes-messages .msg {
+      flex-shrink: 0;
+      flex-grow: 0;
+      height: auto;
+    }
+
+    /* Transcription - left side */
     #notes-transcription-msg {
       align-self: flex-start;
     }
 
-    /* Summary - right side, grey */
+    /* Summary - right side */
     #notes-summary-msg {
       align-self: flex-end;
     }
