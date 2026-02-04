@@ -9,7 +9,7 @@
 | Phase | Status | Date | Notes |
 |-------|--------|------|-------|
 | 1. Extract CSS | ✅ DONE | 2026-02-04 | Extracted 1,966 lines to `styles/main.css` |
-| 2. Modularize Frontend | 🔲 TODO | - | Split app.js into modules |
+| 2. Modularize Frontend | 🔄 IN PROGRESS | 2026-02-04 | Extracting pure utilities |
 | 3. Modularize Backend | 🔲 TODO | - | Split server.js |
 | 4. Dev Experience | 🔲 TODO | - | README, JSDoc |
 | 5. Performance | 🔲 TODO | - | Optional bundling |
@@ -17,6 +17,16 @@
 ### Phase 1 Results
 - `index.html`: 2,305 → 338 lines ✅
 - New file: `public/styles/main.css` (1,966 lines)
+
+### Phase 2 Progress (Frontend Modularization)
+| Step | Module | Lines | Status |
+|------|--------|-------|--------|
+| 2.1 | modules/config.js | 16 | ✅ CONFIG object |
+| 2.2 | modules/ui.js | 158 | ✅ Message utils, formatters |
+| 2.3 | modules/audio.js | 54 | ✅ Audio conversion utils |
+| 2.4 | Deduplication | - | ✅ Removed duplicate code |
+
+**Current app.js:** 3,712 → 3,620 lines (-92 lines, -2.5%)
 
 ---
 
