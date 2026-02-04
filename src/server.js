@@ -16,6 +16,7 @@
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import express from 'express';
+import compression from 'compression';
 import { readFileSync, existsSync, writeFileSync, mkdirSync, watch } from 'fs';
 import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -84,13 +85,26 @@ console.log(`📁 Shared session: ${MAIN_SESSION_ID}`);
 // Express app
 const app = express();
 
-// No caching
-app.use((req, res, next) => {
+// Enable gzip compression (reduces ~117KB app.js to ~25KB)
+app.use(compression());
+
+// Cache static files for 1 hour, but not API routes
+app.use(express.static(join(__dirname, '../public'), { 
+  etag: true,
+  maxAge: '1h',
+  setHeaders: (res, path) => {
+    // Don't cache HTML (for updates)
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
+
+// No caching for API routes
+app.use('/api', (req, res, next) => {
   res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
   next();
 });
-
-app.use(express.static(join(__dirname, '../public'), { etag: false }));
 
 app.get('/api/config', (req, res) => {
   res.json({ modes: Object.keys(MODELS) });
