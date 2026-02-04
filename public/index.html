@@ -339,9 +339,20 @@
       gap: 12px;
     }
 
-    #notes-messages .msg {
+    /* Transcription - left side, grey */
+    #notes-transcription-msg {
       align-self: flex-start;
-      max-width: 90%;
+      max-width: 85%;
+      background: var(--msg-bot);
+      color: var(--text);
+    }
+
+    /* Summary - right side, grey */
+    #notes-summary-msg {
+      align-self: flex-end;
+      max-width: 85%;
+      background: var(--msg-bot);
+      color: var(--text);
     }
 
     .notes-status {
