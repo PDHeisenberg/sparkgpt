@@ -24,6 +24,20 @@ import { TTSProvider } from './providers/tts.js';
 import { loadConfig } from './config.js';
 import { handleRealtimeSession } from './realtime.js';
 import { handleHybridRealtimeSession } from './hybrid-realtime.js';
+import {
+  UNIFIED_SESSION,
+  UNIFIED_GATEWAY_URL,
+  UNIFIED_HOOK_TOKEN,
+  UNIFIED_SESSION_KEY,
+  checkGatewayStatus,
+  queueMessage,
+  drainMessageQueue,
+  startQueueDrainTimer,
+  isConnectingError,
+  sendToMainSession,
+  setQueueCallbacks,
+  setGatewayConnecting
+} from './services/gateway.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
@@ -32,154 +46,9 @@ const mammoth = require('mammoth');
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
 
-// ============================================================================
-// SESSION UNIFICATION - Feature Flag & Gateway Communication
-// Set UNIFIED_SESSION=false to revert to isolated sessions
-// ============================================================================
-const UNIFIED_SESSION = process.env.UNIFIED_SESSION !== 'false'; // Default: true
-const UNIFIED_GATEWAY_URL = 'http://localhost:18789';
-const UNIFIED_HOOK_TOKEN = 'spark-portal-hook-token-2026';
-const UNIFIED_SESSION_KEY = 'agent:main:main';
-
 console.log(`🔗 Session Unification: ${UNIFIED_SESSION ? 'ENABLED (shared with WhatsApp)' : 'DISABLED (isolated)'}`);
 
-// ============================================================================
-// MESSAGE QUEUE - Queue messages when gateway/WhatsApp is connecting
-// ============================================================================
-const messageQueue = [];
-let gatewayConnecting = false;
-let queueDrainTimer = null;
-const QUEUE_CHECK_INTERVAL = 3000; // Check every 3 seconds
-const MAX_QUEUE_SIZE = 50;
-
-// Check if gateway/WhatsApp is ready
-async function checkGatewayStatus() {
-  try {
-    const response = await fetch(`${UNIFIED_GATEWAY_URL}/api/status`, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${UNIFIED_HOOK_TOKEN}` },
-      signal: AbortSignal.timeout(5000)
-    });
-    if (!response.ok) return { ready: false, connecting: false };
-    const status = await response.json();
-    // Check WhatsApp channel status
-    const whatsapp = status.channels?.whatsapp;
-    if (!whatsapp) return { ready: false, connecting: false };
-    const connected = whatsapp.connected === true;
-    const running = whatsapp.running === true;
-    return { ready: connected, connecting: running && !connected };
-  } catch (e) {
-    return { ready: false, connecting: false };
-  }
-}
-
-// Queue a message for later delivery
-function queueMessage(ws, sessionId, text, resolve) {
-  if (messageQueue.length >= MAX_QUEUE_SIZE) {
-    console.warn(`⚠️ Message queue full (${MAX_QUEUE_SIZE}), rejecting message`);
-    return false;
-  }
-  messageQueue.push({ ws, sessionId, text, resolve, queuedAt: Date.now() });
-  console.log(`📥 [${sessionId}] Message queued (${messageQueue.length} pending)`);
-  return true;
-}
-
-// Drain queued messages when connection is restored
-async function drainMessageQueue() {
-  if (messageQueue.length === 0) return;
-  
-  const status = await checkGatewayStatus();
-  if (!status.ready) {
-    if (status.connecting) {
-      console.log(`⏳ Gateway connecting, ${messageQueue.length} messages queued...`);
-    }
-    return;
-  }
-  
-  console.log(`✅ Gateway ready, draining ${messageQueue.length} queued messages...`);
-  gatewayConnecting = false;
-  
-  // Process queue in order
-  while (messageQueue.length > 0) {
-    const item = messageQueue.shift();
-    const waitTime = Date.now() - item.queuedAt;
-    console.log(`📤 [${item.sessionId}] Processing queued message (waited ${Math.round(waitTime/1000)}s)`);
-    
-    try {
-      // Re-attempt the message
-      await routeThroughClawdbot(item.ws, item.sessionId, item.text, true);
-      if (item.resolve) item.resolve(true);
-    } catch (e) {
-      console.error(`❌ [${item.sessionId}] Failed to process queued message:`, e.message);
-      sendToClient(item.sessionId, { type: 'error', message: `Queued message failed: ${e.message}` });
-      sendToClient(item.sessionId, { type: 'done' });
-      if (item.resolve) item.resolve(false);
-    }
-  }
-  
-  // Stop the drain timer if queue is empty
-  if (messageQueue.length === 0 && queueDrainTimer) {
-    clearInterval(queueDrainTimer);
-    queueDrainTimer = null;
-  }
-}
-
-// Start queue drain timer
-function startQueueDrainTimer() {
-  if (queueDrainTimer) return;
-  queueDrainTimer = setInterval(drainMessageQueue, QUEUE_CHECK_INTERVAL);
-  console.log(`⏱️ Queue drain timer started`);
-}
-
-// Detect if error indicates connecting state (vs permanent failure)
-function isConnectingError(errorText) {
-  const connectingPatterns = [
-    /no active.*whatsapp.*listener/i,
-    /no active.*web.*listener/i,
-    /whatsapp.*not.*connected/i,
-    /whatsapp.*connecting/i,
-    /whatsapp.*reconnect/i,
-    /web.*socket.*closed/i,
-    /gateway.*connecting/i
-  ];
-  return connectingPatterns.some(p => p.test(errorText));
-}
-
-// Send message to main session via gateway webhook
-async function sendToMainSession(text, source = 'Spark Portal') {
-  if (!UNIFIED_SESSION) {
-    return null;
-  }
-  
-  try {
-    const response = await fetch(`${UNIFIED_GATEWAY_URL}/hooks/agent`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${UNIFIED_HOOK_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: text,
-        name: source,
-        sessionKey: UNIFIED_SESSION_KEY,
-        deliver: false,
-        timeoutSeconds: 120
-      })
-    });
-    
-    if (!response.ok) {
-      console.error('Gateway webhook error:', response.status, await response.text());
-      return null;
-    }
-    
-    // Response is the agent's reply
-    const result = await response.json();
-    return result;
-  } catch (e) {
-    console.error('Failed to send to main session:', e.message);
-    return null;
-  }
-}
+// Gateway service imported from ./services/gateway.js
 
 // Models for different modes
 const MODELS = {
@@ -1462,7 +1331,7 @@ async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
           // Check if this is a "connecting" error - queue message for retry
           if (!isRetry && isConnectingError(errorText)) {
             console.log(`⏳ [${sessionId}] Gateway connecting, queueing message...`);
-            gatewayConnecting = true;
+            setGatewayConnecting(true);
             
             // Notify user their message is queued
             sendToClient(sessionId, { 
@@ -1533,6 +1402,9 @@ async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
     });
   });
 }
+
+// Set up gateway queue callbacks now that functions are defined
+setQueueCallbacks(routeThroughClawdbot, sendToClient);
 
 // Handle text/voice transcript (with optional image or file)
 // ALL messages route through Clawdbot main session for unified experience
