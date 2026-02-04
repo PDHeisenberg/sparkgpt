@@ -5,6 +5,11 @@
  */
 
 import { CONFIG } from './modules/config.js';
+import { 
+  trackDisplayedMessage, 
+  isMessageDisplayed, 
+  formatMessage
+} from './modules/ui.js';
 
 // Elements
 const messagesEl = document.getElementById('messages');
@@ -689,35 +694,8 @@ async function openChatWithLoading() {
 // ============================================================================
 // MESSAGES
 // ============================================================================
-
-// Track recently displayed messages to prevent duplicates (by content hash)
-const displayedMessageHashes = new Set();
-const MAX_DISPLAYED_HASHES = 50;
-
-function hashMessageContent(text) {
-  // Simple hash for deduplication
-  const str = (text || '').trim().slice(0, 200);
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return hash.toString(36);
-}
-
-function trackDisplayedMessage(text) {
-  const hash = hashMessageContent(text);
-  displayedMessageHashes.add(hash);
-  // Clean old entries
-  if (displayedMessageHashes.size > MAX_DISPLAYED_HASHES) {
-    const iter = displayedMessageHashes.values();
-    for (let i = 0; i < 10; i++) displayedMessageHashes.delete(iter.next().value);
-  }
-}
-
-function isMessageDisplayed(text) {
-  return displayedMessageHashes.has(hashMessageContent(text));
-}
+// Message deduplication: trackDisplayedMessage, isMessageDisplayed, formatMessage
+// are imported from modules/ui.js
 
 // Check if user is scrolled near the bottom
 function isNearBottom(threshold = 100) {
@@ -778,18 +756,7 @@ function addMsg(text, type, options = {}) {
   return el;
 }
 
-function formatMessage(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-    .replace(/^(.*)$/, '<p>$1</p>')
-    .replace(/<p><\/p>/g, '');
-}
+// formatMessage is imported from modules/ui.js
 
 function showThinking() {
   // Don't show thinking indicator on intro page
