@@ -369,7 +369,8 @@ async function loadModeHistory(modeName) {
 // Render mode history in chat feed
 function renderModeHistory(modeName) {
   const messages = modeHistory[modeName] || [];
-  messagesEl.innerHTML = '';
+  // Clear messages but preserve the welcome element
+  messagesEl.querySelectorAll('.msg, .mode-empty-state').forEach(el => el.remove());
   
   if (messages.length === 0) {
     const config = getModeConfig(modeName);
@@ -493,6 +494,10 @@ function showIntroPage() {
   
   requestAnimationFrame(() => {
     pageState = 'intro';
+    
+    // Clear any active mode session
+    currentSparkMode = null;
+    updateModeIndicator();
     
     // Reset articulations mode (previously monkey-patched)
     articulationsMode = false;
