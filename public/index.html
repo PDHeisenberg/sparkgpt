@@ -336,9 +336,17 @@
 
     /* Override notes-content for results view - prevent stretching */
     body.notes-results #notes-content {
+      flex: none;
       align-items: flex-start;
       justify-content: flex-start;
       gap: 0;
+      padding: 16px;
+      padding-bottom: 100px;
+    }
+
+    body.notes-results #notes-results {
+      flex: none;
+      height: auto;
     }
 
     #notes-messages {
@@ -348,11 +356,11 @@
       width: 100%;
     }
 
-    /* Prevent flex stretching on note messages */
-    #notes-messages .msg {
-      flex-shrink: 0;
-      flex-grow: 0;
-      height: auto;
+    /* Notes messages - same as regular chat */
+    #notes-transcription-msg,
+    #notes-summary-msg {
+      padding: 14px 18px;
+      max-width: 85%;
     }
 
     /* Transcription - left side */
