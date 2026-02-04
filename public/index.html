@@ -314,68 +314,37 @@
       gap: 24px;
     }
 
-    /* Notes results view */
+    /* Notes results view - chat style */
     #notes-results {
-      width: 100%;
-      max-width: 600px;
-      display: flex;
+      display: none;
       flex-direction: column;
-      gap: 16px;
-      text-align: left;
-    }
-
-    #notes-results-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    #notes-results-header .notes-icon {
-      font-size: 28px;
-    }
-
-    #notes-results-header .notes-title {
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--text);
-    }
-
-    #notes-transcription {
-      background: var(--card);
-      border-radius: 12px;
+      width: 100%;
+      height: 100%;
       padding: 16px;
-      font-size: 14px;
-      color: var(--text-dim);
-      line-height: 1.6;
-      max-height: 150px;
+      padding-bottom: 100px;
       overflow-y: auto;
     }
 
-    #notes-transcription::before {
-      content: 'Transcription';
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    body.notes-results #notes-recording {
+      display: none;
     }
 
-    #notes-summary {
-      background: var(--card);
-      border-radius: 12px;
-      padding: 16px;
-      font-size: 15px;
-      color: var(--text);
-      line-height: 1.6;
+    body.notes-results #notes-results {
+      display: flex;
     }
 
-    #notes-summary::before {
-      content: 'Summary';
-      display: block;
+    #notes-messages {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #notes-messages .msg {
+      align-self: flex-start;
+      max-width: 90%;
+    }
+
+    .note-label {
       font-size: 12px;
       font-weight: 600;
       color: var(--accent);
@@ -384,25 +353,45 @@
       letter-spacing: 0.5px;
     }
 
-    .notes-action-btn {
-      background: var(--accent);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 14px 24px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 8px;
-      transition: transform 0.2s, opacity 0.2s;
+    #notes-transcription-msg {
+      opacity: 0.8;
     }
 
-    .notes-action-btn:hover {
-      opacity: 0.9;
+    #notes-transcription-msg .note-label {
+      color: var(--text-dim);
     }
 
-    .notes-action-btn:active {
-      transform: scale(0.98);
+    /* Hide recording buttons when showing results */
+    body.notes-results #close-notes-btn,
+    body.notes-results #delete-notes-btn {
+      display: none !important;
+    }
+
+    /* Hide results buttons when recording */
+    body.notes-mode:not(.notes-results) #notes-save-memory-btn,
+    body.notes-mode:not(.notes-results) #notes-save-file-btn,
+    body.notes-mode:not(.notes-results) #notes-delete-btn,
+    body.notes-mode:not(.notes-results) #notes-new-btn,
+    body.notes-mode:not(.notes-results) #notes-back-btn {
+      display: none !important;
+    }
+
+    /* Show results buttons */
+    body.notes-results #notes-save-memory-btn,
+    body.notes-results #notes-save-file-btn,
+    body.notes-results #notes-delete-btn,
+    body.notes-results #notes-new-btn,
+    body.notes-results #notes-back-btn {
+      display: flex !important;
+    }
+
+    /* Hide all notes buttons when not in notes mode */
+    #notes-save-memory-btn,
+    #notes-save-file-btn,
+    #notes-delete-btn,
+    #notes-new-btn,
+    #notes-back-btn {
+      display: none;
     }
 
     .msg {
@@ -2117,15 +2106,20 @@
         </div>
         <div class="status">Recording...</div>
       </div>
-      <!-- Results view (shown after transcription) -->
-      <div id="notes-results" style="display:none;">
-        <div id="notes-results-header">
-          <span class="notes-icon">📝</span>
-          <span class="notes-title">Voice Note</span>
+      <!-- Results view (chat-style) -->
+      <div id="notes-results">
+        <div id="notes-messages">
+          <!-- Transcription message -->
+          <div class="msg bot" id="notes-transcription-msg">
+            <div class="note-label">📝 Transcription</div>
+            <div id="notes-transcription"></div>
+          </div>
+          <!-- Summary message -->
+          <div class="msg bot" id="notes-summary-msg">
+            <div class="note-label">✨ Summary</div>
+            <div id="notes-summary"></div>
+          </div>
         </div>
-        <div id="notes-transcription"></div>
-        <div id="notes-summary"></div>
-        <button id="notes-new-btn" class="notes-action-btn">New Note</button>
       </div>
     </div>
 
@@ -2185,21 +2179,57 @@
         </svg>
       </button>
 
-      <!-- Notes mode: Close button -->
-      <button id="close-notes-btn" title="Save" aria-label="Save and close notes">
+      <!-- Notes mode: Recording buttons -->
+      <button id="close-notes-btn" class="circle-btn" title="Stop Recording" aria-label="Stop and transcribe">
         <svg viewBox="0 0 24 24">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
         </svg>
       </button>
 
-      <!-- Notes mode: Delete button -->
-      <button id="delete-notes-btn" title="Discard" aria-label="Discard recording">
+      <button id="delete-notes-btn" class="circle-btn" title="Discard" aria-label="Discard recording">
         <svg viewBox="0 0 24 24">
           <polyline points="3 6 5 6 21 6"/>
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          <line x1="10" y1="11" x2="10" y2="17"/>
-          <line x1="14" y1="11" x2="14" y2="17"/>
+        </svg>
+      </button>
+
+      <!-- Notes mode: Results action buttons -->
+      <button id="notes-save-memory-btn" class="circle-btn" title="Save to Memory" aria-label="Save note to memory">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
+        </svg>
+      </button>
+
+      <button id="notes-save-file-btn" class="circle-btn" title="Save to File" aria-label="Save note to file">
+        <svg viewBox="0 0 24 24">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <path d="M14 2v6h6"/>
+          <path d="M12 18v-6"/>
+          <path d="M9 15l3 3 3-3"/>
+        </svg>
+      </button>
+
+      <button id="notes-delete-btn" class="circle-btn" title="Delete Note" aria-label="Delete this note">
+        <svg viewBox="0 0 24 24">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+      </button>
+
+      <button id="notes-new-btn" class="circle-btn" title="New Note" aria-label="Record new note">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="16"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </button>
+
+      <button id="notes-back-btn" class="circle-btn" title="Back" aria-label="Back to intro">
+        <svg viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
 

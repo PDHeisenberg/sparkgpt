@@ -836,6 +836,61 @@ app.get('/api/reports/today', async (req, res) => {
   }
 });
 
+// ============================================================================
+// NOTES API
+// ============================================================================
+
+// Save note to memory (appends to MEMORY.md)
+app.post('/api/notes/save-memory', express.json(), async (req, res) => {
+  try {
+    const { transcription, summary, timestamp } = req.body;
+    const date = new Date(timestamp || Date.now());
+    const dateStr = date.toISOString().split('T')[0];
+    const timeStr = date.toLocaleTimeString('en-SG', { 
+      timeZone: 'Asia/Singapore',
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+    
+    const memoryPath = '/home/heisenberg/clawd/MEMORY.md';
+    let content = existsSync(memoryPath) ? readFileSync(memoryPath, 'utf8') : '# MEMORY\n\n';
+    
+    // Add note entry
+    const noteEntry = `\n## Voice Note (${dateStr} ${timeStr})\n\n**Transcription:** ${transcription}\n\n**Summary:** ${summary}\n`;
+    content += noteEntry;
+    
+    writeFileSync(memoryPath, content);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Save to memory failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Save note to file (creates dated note file)
+app.post('/api/notes/save-file', express.json(), async (req, res) => {
+  try {
+    const { transcription, summary, timestamp } = req.body;
+    const date = new Date(timestamp || Date.now());
+    const dateStr = date.toISOString().split('T')[0];
+    const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '-');
+    
+    const notesDir = '/home/heisenberg/clawd/notes';
+    if (!existsSync(notesDir)) mkdirSync(notesDir, { recursive: true });
+    
+    const filename = `note-${dateStr}-${timeStr}.md`;
+    const filepath = join(notesDir, filename);
+    
+    const content = `# Voice Note\n\n**Date:** ${date.toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}\n\n## Transcription\n\n${transcription}\n\n## Summary\n\n${summary}\n`;
+    
+    writeFileSync(filepath, content);
+    res.json({ success: true, filename });
+  } catch (e) {
+    console.error('Save to file failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // HTTP server
 const server = createServer(app);
 

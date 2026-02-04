@@ -207,6 +207,13 @@ const notesResults = document.getElementById('notes-results');
 const notesTranscription = document.getElementById('notes-transcription');
 const notesSummary = document.getElementById('notes-summary');
 const notesNewBtn = document.getElementById('notes-new-btn');
+const notesSaveMemoryBtn = document.getElementById('notes-save-memory-btn');
+const notesSaveFileBtn = document.getElementById('notes-save-file-btn');
+const notesDeleteBtn = document.getElementById('notes-delete-btn');
+const notesBackBtn = document.getElementById('notes-back-btn');
+
+// Current note data for saving
+let currentNoteData = { transcription: '', summary: '' };
 const closeBtn = document.getElementById('close-btn');
 const historyBtn = document.getElementById('history-btn');
 const themeBtn = document.getElementById('theme-btn');
@@ -1614,9 +1621,76 @@ function stopRecording() {
 // Exit notes mode completely
 function exitNotesMode() {
   document.body.classList.remove('notes-mode');
+  document.body.classList.remove('notes-results');
   bottomEl?.classList.remove('notes-active');
   resetNotesView();
   mode = 'chat';
+}
+
+// Save note to memory (MEMORY.md)
+async function saveNoteToMemory() {
+  if (!currentNoteData.transcription && !currentNoteData.summary) {
+    toast('No note to save', true);
+    return;
+  }
+  
+  try {
+    const res = await fetch('/api/notes/save-memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcription: currentNoteData.transcription,
+        summary: currentNoteData.summary,
+        timestamp: Date.now()
+      })
+    });
+    
+    if (res.ok) {
+      toast('Saved to memory ✓');
+    } else {
+      toast('Failed to save', true);
+    }
+  } catch (e) {
+    toast('Save failed', true);
+  }
+}
+
+// Save note to file
+async function saveNoteToFile() {
+  if (!currentNoteData.transcription && !currentNoteData.summary) {
+    toast('No note to save', true);
+    return;
+  }
+  
+  try {
+    const res = await fetch('/api/notes/save-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcription: currentNoteData.transcription,
+        summary: currentNoteData.summary,
+        timestamp: Date.now()
+      })
+    });
+    
+    const data = await res.json();
+    if (res.ok) {
+      toast(`Saved to ${data.filename || 'file'} ✓`);
+    } else {
+      toast('Failed to save', true);
+    }
+  } catch (e) {
+    toast('Save failed', true);
+  }
+}
+
+// Delete current note
+function deleteCurrentNote() {
+  currentNoteData = { transcription: '', summary: '' };
+  if (notesTranscription) notesTranscription.textContent = '';
+  if (notesSummary) notesSummary.textContent = '';
+  toast('Note deleted');
+  exitNotesMode();
 }
 
 function discardRecording() {
@@ -1640,13 +1714,11 @@ async function finishRecording() {
   const duration = Math.floor((Date.now() - recordStart) / 1000);
   releaseMicrophone();
   
-  // Show processing state in notes view
-  if (notesRecording) notesRecording.style.display = 'none';
-  if (notesResults) {
-    notesResults.style.display = 'flex';
-    if (notesTranscription) notesTranscription.textContent = 'Processing...';
-    if (notesSummary) notesSummary.textContent = '';
-  }
+  // Switch to results view
+  document.body.classList.add('notes-results');
+  if (notesTranscription) notesTranscription.textContent = 'Processing...';
+  if (notesSummary) notesSummary.textContent = '';
+  currentNoteData = { transcription: '', summary: '' };
   
   const reader = new FileReader();
   reader.onload = () => sendNote(reader.result.split(',')[1], duration);
@@ -1665,11 +1737,11 @@ function sendNote(audio, duration) {
 
 // Reset notes view to recording state
 function resetNotesView() {
-  if (notesRecording) notesRecording.style.display = 'flex';
-  if (notesResults) notesResults.style.display = 'none';
+  document.body.classList.remove('notes-results');
   if (notesTimerEl) notesTimerEl.textContent = '0:00';
   if (notesTranscription) notesTranscription.textContent = '';
   if (notesSummary) notesSummary.textContent = '';
+  currentNoteData = { transcription: '', summary: '' };
 }
 
 notesBtn?.addEventListener('click', () => { 
@@ -1678,19 +1750,22 @@ notesBtn?.addEventListener('click', () => {
   startRecording(); 
 });
 closeNotesBtn?.addEventListener('click', () => {
-  // If recording, stop and process
+  // Stop recording and process
   if (mediaRecorder?.state === 'recording') {
     stopRecording();
-  } else {
-    // If showing results, exit notes mode
-    exitNotesMode();
   }
 });
 deleteNotesBtn?.addEventListener('click', discardRecording);
+
+// Results action buttons
 notesNewBtn?.addEventListener('click', () => {
   resetNotesView();
   startRecording();
 });
+notesSaveMemoryBtn?.addEventListener('click', saveNoteToMemory);
+notesSaveFileBtn?.addEventListener('click', saveNoteToFile);
+notesDeleteBtn?.addEventListener('click', deleteCurrentNote);
+notesBackBtn?.addEventListener('click', exitNotesMode);
 
 // ============================================================================
 // WEBSOCKET
@@ -1944,6 +2019,7 @@ function handle(data) {
       if (document.body.classList.contains('notes-mode') && notesSummary) {
         if (data.content) {
           notesSummary.innerHTML = formatMessage(data.content);
+          currentNoteData.summary = data.content;
         }
       }
       // Route to session page if active
@@ -1972,6 +2048,7 @@ function handle(data) {
       // Check if we're in notes mode - show in notes view
       if (document.body.classList.contains('notes-mode') && notesTranscription) {
         notesTranscription.textContent = data.text;
+        currentNoteData.transcription = data.text;
       } else {
         const transSys = messagesEl?.querySelector('.msg.system:last-child');
         if (transSys?.textContent === 'Transcribing...') transSys.remove();
