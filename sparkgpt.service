@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=heisenberg
-WorkingDirectory=/home/heisenberg/clawd/spark-voice
+WorkingDirectory=/home/heisenberg/clawd/sparkgpt
 ExecStart=/usr/bin/node src/server.js
 Restart=always
 RestartSec=5
