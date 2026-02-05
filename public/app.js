@@ -4,7 +4,7 @@
  * Modular architecture - see /modules/ for components
  */
 
-import { CONFIG } from './modules/config.js';
+import { CONFIG, MODE_DEFAULTS, SESSION_MODE_CONFIG } from './modules/config.js';
 import { 
   trackDisplayedMessage, 
   isMessageDisplayed, 
@@ -17,6 +17,7 @@ import {
   float32ToBase64PCM16,
   base64PCM16ToFloat32
 } from './modules/audio.js';
+// State is managed locally in this file
 
 // Elements
 const messagesEl = document.getElementById('messages');
@@ -274,15 +275,7 @@ let currentSparkMode = null; // null = main session, or 'dev', 'research', 'plan
 let modeHistory = {}; // Cache history per mode
 let modeConfigs = {}; // Loaded from server
 
-// Mode configuration (will be loaded from server, fallback here)
-const MODE_DEFAULTS = {
-  dev: { name: 'Dev Mode', icon: '👨‍💻', notifyWhatsApp: true },
-  research: { name: 'Research Mode', icon: '🔬', notifyWhatsApp: true },
-  plan: { name: 'Plan Mode', icon: '📋', notifyWhatsApp: true },
-  articulate: { name: 'Articulate Mode', icon: '✍️', notifyWhatsApp: false },
-  dailyreports: { name: 'Daily Reports', icon: '📊', notifyWhatsApp: true },
-  videogen: { name: 'Video Gen', icon: '🎬', notifyWhatsApp: true }
-};
+// MODE_DEFAULTS imported from ./modules/config.js
 
 // Load mode configs from server
 async function loadModeConfigs() {
@@ -2366,41 +2359,7 @@ const sessionStatus = document.getElementById('session-status');
 let currentSessionMode = null; // 'dev', 'research', 'plan', 'video'
 let sessionPageProcessing = false;
 
-// Mode configurations for session page
-const SESSION_MODE_CONFIG = {
-  dev: {
-    name: 'Dev Mode',
-    icon: '👨‍💻',
-    sessionKey: 'spark-dev-mode',
-    placeholder: 'Describe what you want to build or fix...',
-    emptyTitle: 'Dev Mode',
-    emptyDesc: 'Start a coding session. Describe what you want to build or fix.'
-  },
-  research: {
-    name: 'Research Mode',
-    icon: '🔬',
-    sessionKey: 'spark-research-mode',
-    placeholder: 'What would you like to research?',
-    emptyTitle: 'Research Mode',
-    emptyDesc: 'Start a deep research session. Ask about any topic.'
-  },
-  plan: {
-    name: 'Plan Mode',
-    icon: '📋',
-    sessionKey: 'spark-plan-mode',
-    placeholder: 'What do you want to plan?',
-    emptyTitle: 'Plan Mode',
-    emptyDesc: 'Start planning. Describe your project or feature.'
-  },
-  videogen: {
-    name: 'Video Gen',
-    icon: '🎬',
-    sessionKey: 'spark-videogen-mode',
-    placeholder: 'Describe the video you want to create...',
-    emptyTitle: 'Video Gen',
-    emptyDesc: 'Generate AI videos. Describe what you want to create.'
-  }
-};
+// SESSION_MODE_CONFIG imported from ./modules/config.js
 
 // Show session page for a specific mode
 async function showSessionPage(mode) {
