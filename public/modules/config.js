@@ -64,3 +64,29 @@ export const SESSION_MODE_CONFIG = {
     emptyDesc: 'Generate AI videos. Describe what you want to create.'
   }
 };
+
+/**
+ * Map button IDs to session labels
+ */
+export const BUTTON_TO_SESSION = {
+  'devteam-btn': 'spark-dev-mode',
+  'researcher-btn': 'spark-research-mode',
+  'plan-btn': 'spark-plan-mode',
+  'videogen-btn': 'spark-videogen-mode'
+};
+
+/**
+ * Map mode names to session labels
+ */
+export const MODE_TO_SESSION = {
+  'dev': 'spark-dev-mode',
+  'research': 'spark-research-mode',
+  'plan': 'spark-plan-mode',
+  'videogen': 'spark-videogen-mode'
+};
+
+/**
+ * Application constants
+ */
+export const MAX_RECONNECT_ATTEMPTS = 5;
+export const SCROLL_THRESHOLD = 50; // pixels to pull down to trigger

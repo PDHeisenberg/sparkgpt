@@ -4,7 +4,15 @@
  * Modular architecture - see /modules/ for components
  */
 
-import { CONFIG, MODE_DEFAULTS, SESSION_MODE_CONFIG } from './modules/config.js';
+import { 
+  CONFIG, 
+  MODE_DEFAULTS, 
+  SESSION_MODE_CONFIG,
+  BUTTON_TO_SESSION,
+  MODE_TO_SESSION,
+  MAX_RECONNECT_ATTEMPTS,
+  SCROLL_THRESHOLD
+} from './modules/config.js';
 import { 
   trackDisplayedMessage, 
   isMessageDisplayed, 
@@ -258,7 +266,7 @@ let articulationsMode = false; // Text refinement mode
 // Realtime voice state is defined in the REALTIME VOICE MODE section
 let isListening = false;
 let realtimeReconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+// MAX_RECONNECT_ATTEMPTS imported from config.js
 let isProcessing = false;
 let audioContext = null;
 let currentAudio = null;
@@ -609,7 +617,7 @@ closeChatBtn?.addEventListener('click', (e) => {
 // ============================================================================
 // PULL DOWN TO OPEN CHAT (on intro page)
 // ============================================================================
-const SCROLL_THRESHOLD = 50; // pixels to pull down to trigger
+// SCROLL_THRESHOLD imported from config.js
 let introTouchStartY = 0;
 let introScrollTriggered = false;
 
@@ -2265,21 +2273,9 @@ const activeSubagentSessions = {
   'spark-videogen-mode': null
 };
 
-// Map button IDs to session labels
-const buttonToSessionLabel = {
-  'devteam-btn': 'spark-dev-mode',
-  'researcher-btn': 'spark-research-mode',
-  'plan-btn': 'spark-plan-mode',
-  'videogen-btn': 'spark-videogen-mode'
-};
-
-// Map mode names to session labels
-const modeToSessionLabel = {
-  'dev': 'spark-dev-mode',
-  'research': 'spark-research-mode',
-  'plan': 'spark-plan-mode',
-  'videogen': 'spark-videogen-mode'
-};
+// BUTTON_TO_SESSION and MODE_TO_SESSION imported from config.js
+const buttonToSessionLabel = BUTTON_TO_SESSION;
+const modeToSessionLabel = MODE_TO_SESSION;
 
 // Check for active subagent sessions
 async function checkActiveSubagentSessions() {
