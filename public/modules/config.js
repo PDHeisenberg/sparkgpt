@@ -13,4 +13,6 @@ export const CONFIG = {
     return path && path !== '/' ? `${base}${path}` : base;
   })(),
   silenceMs: 1500,
+  // Max file upload size (10 MB)
+  maxFileSize: 10 * 1024 * 1024,
 };

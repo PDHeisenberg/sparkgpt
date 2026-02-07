@@ -3500,6 +3500,13 @@ fileInput?.addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
   
+  // Validate file size
+  if (file.size > CONFIG.maxFileSize) {
+    toast(`File too large (${formatFileSize(file.size)}). Maximum size is ${formatFileSize(CONFIG.maxFileSize)}.`, true);
+    fileInput.value = '';
+    return;
+  }
+  
   // Store the file
   pendingAttachment = file;
   
