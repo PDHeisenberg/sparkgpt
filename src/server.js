@@ -1134,7 +1134,35 @@ wss.on('connection', (ws, request) => {
   
   ws.on('message', async (data) => {
     try {
+      // Reject oversized messages (defense-in-depth beyond maxPayload)
+      const rawSize = typeof data === 'string' ? data.length : data.byteLength;
+      if (rawSize > WS_MAX_PAYLOAD) {
+        console.warn(`[${sessionId}] Rejected oversized message: ${Math.round(rawSize / 1024)}KB`);
+        ws.send(JSON.stringify({ type: 'error', message: 'Message too large' }));
+        return;
+      }
+
       const msg = JSON.parse(data.toString());
+
+      // Validate message type
+      const VALID_WS_TYPES = ['transcript', 'voice_note'];
+      if (!msg.type || !VALID_WS_TYPES.includes(msg.type)) {
+        console.warn(`[${sessionId}] Invalid message type: ${msg.type}`);
+        ws.send(JSON.stringify({ type: 'error', message: `Invalid message type: ${msg.type}` }));
+        return;
+      }
+
+      // Validate required fields per message type
+      if (msg.type === 'transcript' && (!msg.text || typeof msg.text !== 'string' || !msg.text.trim())) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Missing or empty text for transcript' }));
+        return;
+      }
+
+      if (msg.type === 'voice_note' && (!msg.audio || typeof msg.audio !== 'string')) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Missing audio data for voice note' }));
+        return;
+      }
+
       await handleMessage(ws, msg);
     } catch (e) {
       console.error(`[${sessionId}] Error:`, e.message);
