@@ -12,7 +12,7 @@ import { join } from 'path';
 import { log, debug, error as logError } from './logger.js';
 import { CLI_TIMEOUT_MS } from './constants.js';
 import { SESSIONS_DIR, extractTextFromContent } from './services/session.js';
-import { getLatestSession, createSession, updateSessionTitle, incrementMessageCount } from './mode-session-index.js';
+import { getSessionIndex, getLatestSession, createSession, updateSessionTitle, incrementMessageCount } from './mode-session-index.js';
 
 const OPENCLAW_PATH = '/home/heisenberg/.npm-global/bin/openclaw';
 
@@ -377,14 +377,22 @@ export function getModeHistory(mode, limit = 50, modeSessionId) {
 
   // Resolve which session to read
   let targetSessionId = modeSessionId;
+  let isLegacySession = false;
   if (!targetSessionId) {
     const latest = getLatestSession(mode);
     if (latest) {
       targetSessionId = latest.id;
+      isLegacySession = !!latest.legacy;
     } else {
       // Fall back to legacy deterministic ID
       targetSessionId = modeConfig.sessionId;
+      isLegacySession = true;
     }
+  } else {
+    // Check if specified session is legacy
+    const index = getSessionIndex(mode);
+    const sessionEntry = index.sessions.find(s => s.id === targetSessionId);
+    isLegacySession = !!(sessionEntry && sessionEntry.legacy);
   }
 
   try {
@@ -397,80 +405,196 @@ export function getModeHistory(mode, limit = 50, modeSessionId) {
     const content = readFileSync(sessionPath, 'utf8');
     const lines = content.trim().split('\n').filter(l => l);
 
-    const messages = [];
-    for (const line of lines) {
-      try {
-        const entry = JSON.parse(line);
-        if (entry.type !== 'message' || !entry.message) continue;
-
-        const msg = entry.message;
-        if (msg.role !== 'user' && msg.role !== 'assistant') continue;
-
-        // For assistant messages, skip tool calls and thinking-only turns
-        if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-          const hasToolCall = msg.content.some(c => c.type === 'toolCall' || c.type === 'tool_use');
-          const hasThinking = msg.content.some(c => c.type === 'thinking');
-          if (hasToolCall) continue;
-          if (hasThinking && !msg.content.some(c => c.type === 'text')) continue;
-        }
-
-        let text = extractTextFromContent(msg.content);
-        if (!text) continue;
-
-        // Skip heartbeat messages
-        if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
-
-        // Skip WhatsApp metadata leakage
-        if (text.includes('[WhatsApp ') || text.includes('[message_id:') || text.includes('[media attached:')) continue;
-
-        // Skip gateway status messages
-        if (text.includes('WhatsApp gateway disconnected') || text.includes('WhatsApp gateway connected')) continue;
-
-        // Skip messages with base64 image data or other huge content (not useful for display)
-        if (text.length > 10000) continue;
-
-        // Strip [System Context: ...] wrapper from user messages
-        // The system prompt is wrapped as: [System Context: ...multi-line-prompt...]\n\nActual message
-        // We need to find the closing ']' of the context block, then extract after \n\n
-        if (text.includes('[System Context:')) {
-          const contextStart = text.indexOf('[System Context:');
-          // Find the matching closing bracket — the system prompt may contain newlines
-          // Look for ']\n\n' which marks end of context block + separator
-          const contextEnd = text.indexOf(']\n\n', contextStart);
-          if (contextEnd !== -1) {
-            const afterContext = text.slice(contextEnd + 3).trim();
-            if (afterContext) {
-              text = afterContext;
-            } else {
-              continue; // System context only, no actual message after it
-            }
-          } else {
-            // No closing bracket + double newline — might be just system context
-            continue;
-          }
-        }
-
-        // Strip timestamp prefix if present: [Sat 2026-02-07 07:43 UTC] ...
-        text = text.replace(/^\[\w{3}\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\w+\]\s*/, '').trim();
-
-        if (!text) continue;
-
-        messages.push({
-          role: msg.role,
-          content: text,
-          timestamp: msg.timestamp || Date.parse(entry.timestamp) || 0
-        });
-      } catch {
-        // Skip malformed lines
-      }
+    // For legacy sessions, we use a two-pass approach:
+    // Pass 1: identify user messages that were sent via mode_message (they contain [System Context:])
+    // Pass 2: pair those user messages with the assistant responses that follow them
+    if (isLegacySession) {
+      return parseLegacyModeHistory(lines, mode, limit);
     }
 
-    // Return last N messages
-    return messages.slice(-limit);
+    // For new (clean) sessions, use simple filtering
+    return parseCleanModeHistory(lines, limit);
   } catch (e) {
     logError(`Failed to read mode history for ${mode}:`, e.message);
     return [];
   }
+}
+
+/**
+ * Parse legacy (polluted) session JSONL.
+ * Legacy sessions contain ALL main session messages mixed in.
+ * Only extract messages that were sent via mode_message (identified by [System Context:] wrapper).
+ */
+function parseLegacyModeHistory(lines, mode, limit) {
+  const modePromptPrefix = MODE_SYSTEM_PROMPTS[mode]?.substring(0, 30) || 'You are Spark in';
+
+  // First, extract all message entries in order
+  const allEntries = [];
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      if (entry.type !== 'message' || !entry.message) continue;
+      const msg = entry.message;
+      if (msg.role !== 'user' && msg.role !== 'assistant') continue;
+
+      // For assistant messages, skip tool calls and thinking-only turns
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        const hasToolCall = msg.content.some(c => c.type === 'toolCall' || c.type === 'tool_use');
+        const hasThinking = msg.content.some(c => c.type === 'thinking');
+        if (hasToolCall) continue;
+        if (hasThinking && !msg.content.some(c => c.type === 'text')) continue;
+      }
+
+      const text = extractTextFromContent(msg.content);
+      if (!text) continue;
+
+      allEntries.push({
+        role: msg.role,
+        text,
+        timestamp: msg.timestamp || Date.parse(entry.timestamp) || 0
+      });
+    } catch {
+      // Skip malformed lines
+    }
+  }
+
+  // Now walk through: only keep user messages that have [System Context:] (mode messages)
+  // and the assistant response(s) that immediately follow each such user message.
+  const messages = [];
+  let expectAssistantResponse = false;
+
+  for (const entry of allEntries) {
+    if (entry.role === 'user') {
+      // Check if this is a mode_message (has System Context wrapper)
+      if (entry.text.includes('[System Context:')) {
+        // Extract the actual user message after the system context
+        let userText = extractUserTextFromSystemContext(entry.text);
+        if (userText) {
+          // Strip timestamp prefix if present
+          userText = userText.replace(/^\[\w{3}\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\w+\]\s*/, '').trim();
+          if (userText) {
+            messages.push({
+              role: 'user',
+              content: userText,
+              timestamp: entry.timestamp
+            });
+            expectAssistantResponse = true;
+          }
+        }
+      } else {
+        // Not a mode message — skip it and stop expecting assistant response
+        expectAssistantResponse = false;
+      }
+    } else if (entry.role === 'assistant') {
+      if (expectAssistantResponse) {
+        let text = entry.text;
+        // Skip empty or very short assistant responses
+        if (text && text.length > 0) {
+          // Additional sanity filters for assistant responses
+          if (text.length > 10000) { continue; } // Truncated or huge — skip
+          if (text.includes('HEARTBEAT_OK')) { expectAssistantResponse = false; continue; }
+
+          messages.push({
+            role: 'assistant',
+            content: text,
+            timestamp: entry.timestamp
+          });
+          expectAssistantResponse = false; // Got the response, stop looking
+        }
+      }
+      // If not expecting a response, skip this assistant message (it's from the main session)
+    }
+  }
+
+  return messages.slice(-limit);
+}
+
+/**
+ * Extract the actual user text from a [System Context: ...]\n\nUser message format
+ */
+function extractUserTextFromSystemContext(text) {
+  const contextStart = text.indexOf('[System Context:');
+  if (contextStart === -1) return text;
+
+  // Find the closing ']' followed by '\n\n'
+  const contextEnd = text.indexOf(']\n\n', contextStart);
+  if (contextEnd !== -1) {
+    const afterContext = text.slice(contextEnd + 3).trim();
+    return afterContext || null;
+  }
+
+  // Try just ']' at end of line
+  const bracketEnd = text.indexOf(']\n', contextStart);
+  if (bracketEnd !== -1) {
+    const afterBracket = text.slice(bracketEnd + 2).trim();
+    return afterBracket || null;
+  }
+
+  return null; // System context only, no actual message
+}
+
+/**
+ * Parse clean (non-legacy) session JSONL — simple filtering only.
+ */
+function parseCleanModeHistory(lines, limit) {
+  const messages = [];
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      if (entry.type !== 'message' || !entry.message) continue;
+
+      const msg = entry.message;
+      if (msg.role !== 'user' && msg.role !== 'assistant') continue;
+
+      // For assistant messages, skip tool calls and thinking-only turns
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        const hasToolCall = msg.content.some(c => c.type === 'toolCall' || c.type === 'tool_use');
+        const hasThinking = msg.content.some(c => c.type === 'thinking');
+        if (hasToolCall) continue;
+        if (hasThinking && !msg.content.some(c => c.type === 'text')) continue;
+      }
+
+      let text = extractTextFromContent(msg.content);
+      if (!text) continue;
+
+      // Skip heartbeat messages
+      if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
+
+      // Skip WhatsApp metadata leakage
+      if (text.includes('[WhatsApp ') || text.includes('[message_id:') || text.includes('[media attached:')) continue;
+
+      // Skip gateway status messages
+      if (text.includes('WhatsApp gateway disconnected') || text.includes('WhatsApp gateway connected')) continue;
+
+      // Skip messages with huge content
+      if (text.length > 10000) continue;
+
+      // Strip [System Context: ...] wrapper from user messages
+      if (text.includes('[System Context:')) {
+        const extracted = extractUserTextFromSystemContext(text);
+        if (extracted) {
+          text = extracted;
+        } else {
+          continue;
+        }
+      }
+
+      // Strip timestamp prefix if present: [Sat 2026-02-07 07:43 UTC] ...
+      text = text.replace(/^\[\w{3}\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\w+\]\s*/, '').trim();
+
+      if (!text) continue;
+
+      messages.push({
+        role: msg.role,
+        content: text,
+        timestamp: msg.timestamp || Date.parse(entry.timestamp) || 0
+      });
+    } catch {
+      // Skip malformed lines
+    }
+  }
+
+  return messages.slice(-limit);
 }
 
 /**
@@ -483,29 +607,38 @@ export function getActiveModeSessions() {
   const result = {};
 
   for (const [mode, config] of Object.entries(MODE_SESSION_MAP)) {
-    const sessionPath = join(SESSIONS_DIR, `${config.sessionId}.jsonl`);
-
-    if (existsSync(sessionPath)) {
-      try {
-        const stat = statSync(sessionPath);
-        const isRecent = (Date.now() - stat.mtimeMs) < 5 * 60 * 1000; // Active if modified in last 5 min
-
-        result[mode] = {
-          label: config.label,
-          sessionId: config.sessionId,
-          exists: true,
-          active: isRecent,
-          lastUpdated: stat.mtimeMs
-        };
-      } catch {
-        result[mode] = {
-          label: config.label,
-          sessionId: config.sessionId,
-          exists: true,
-          active: false,
-          lastUpdated: 0
-        };
+    // Use the session index to determine the latest session for this mode
+    const latest = getLatestSession(mode);
+    
+    if (latest) {
+      const sessionPath = join(SESSIONS_DIR, `${latest.id}.jsonl`);
+      let isRecent = false;
+      let lastUpdated = 0;
+      
+      if (existsSync(sessionPath)) {
+        try {
+          const stat = statSync(sessionPath);
+          lastUpdated = stat.mtimeMs;
+          // Only mark as "active" if the JSONL was modified in last 5 minutes
+          // AND this is NOT a legacy session (legacy files get touched by the main session)
+          if (latest.legacy) {
+            // Legacy sessions are never "active" — they're historical
+            isRecent = false;
+          } else {
+            isRecent = (Date.now() - stat.mtimeMs) < 5 * 60 * 1000;
+          }
+        } catch {
+          // stat failed
+        }
       }
+      
+      result[mode] = {
+        label: config.label,
+        sessionId: latest.id,
+        exists: true,
+        active: isRecent,
+        lastUpdated
+      };
     } else {
       result[mode] = {
         label: config.label,

@@ -2183,8 +2183,8 @@ async function checkActiveSubagentSessions() {
     
     for (const [mode, sessionData] of Object.entries(modeSessions)) {
       const label = modeMap[mode];
-      if (label && sessionData.exists) {
-        // Session exists (has JSONL file) — mark as active
+      if (label && sessionData.active) {
+        // Session is actively being used (updated in last 5 min) — mark as active
         activeSubagentSessions[label] = {
           key: sessionData.sessionId,
           label: sessionData.label,
@@ -2956,11 +2956,17 @@ function viewActiveSession(session) {
   send(`Show me the recent activity from the ${session.label || 'subagent'} session (key: ${session.key})`, 'chat');
 }
 
-// Dev Mode button - session-aware: go to session if active, else open bottom sheet
-document.getElementById('devteam-btn')?.addEventListener('click', () => {
-  const activeSession = getActiveSession('dev');
-  const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
-  if (activeSession || activeSubagentSessions['spark-dev-mode'] || stored['dev']) {
+// Dev Mode button - session-aware: go to session if exists, else open bottom sheet
+document.getElementById('devteam-btn')?.addEventListener('click', async () => {
+  // Check if there are any existing sessions for this mode
+  let hasSessions = false;
+  try {
+    const res = await fetch('/api/modes/dev/sessions');
+    const data = await res.json();
+    hasSessions = data.sessions && data.sessions.length > 0;
+  } catch { /* ignore */ }
+  
+  if (hasSessions) {
     showSessionPage('dev');
   } else {
     createBottomSheet({
@@ -2982,11 +2988,17 @@ document.getElementById('devteam-btn')?.addEventListener('click', () => {
   }
 });
 
-// Research Mode button - session-aware: go to session if active, else open bottom sheet
-document.getElementById('researcher-btn')?.addEventListener('click', () => {
-  const activeSession = getActiveSession('research');
-  const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
-  if (activeSession || activeSubagentSessions['spark-research-mode'] || stored['research']) {
+// Research Mode button - session-aware: go to session if exists, else open bottom sheet
+document.getElementById('researcher-btn')?.addEventListener('click', async () => {
+  // Check if there are any existing sessions for this mode
+  let hasSessions = false;
+  try {
+    const res = await fetch('/api/modes/research/sessions');
+    const data = await res.json();
+    hasSessions = data.sessions && data.sessions.length > 0;
+  } catch { /* ignore */ }
+  
+  if (hasSessions) {
     showSessionPage('research');
   } else {
     createBottomSheet({
@@ -3008,11 +3020,17 @@ document.getElementById('researcher-btn')?.addEventListener('click', () => {
   }
 });
 
-// Plan Mode button - session-aware: go to session if active, else open bottom sheet
-document.getElementById('plan-btn')?.addEventListener('click', () => {
-  const activeSession = getActiveSession('plan');
-  const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
-  if (activeSession || activeSubagentSessions['spark-plan-mode'] || stored['plan']) {
+// Plan Mode button - session-aware: go to session if exists, else open bottom sheet
+document.getElementById('plan-btn')?.addEventListener('click', async () => {
+  // Check if there are any existing sessions for this mode
+  let hasSessions = false;
+  try {
+    const res = await fetch('/api/modes/plan/sessions');
+    const data = await res.json();
+    hasSessions = data.sessions && data.sessions.length > 0;
+  } catch { /* ignore */ }
+  
+  if (hasSessions) {
     showSessionPage('plan');
   } else {
     createBottomSheet({
