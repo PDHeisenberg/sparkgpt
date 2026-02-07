@@ -1952,9 +1952,6 @@ function handle(data) {
         removeSessionThinking();
         if (data.content) {
           addSessionMessage('bot', data.content);
-          // Update session status
-          sessionStatus.textContent = '● Active';
-          sessionStatus.classList.add('active');
         }
       } else {
         removeThinking();
@@ -2314,36 +2311,43 @@ const modeToSessionLabel = {
   'videogen': 'spark-videogen-mode'
 };
 
-// Check for active subagent sessions
+// Check for active subagent sessions (uses mode-sessions JSONL files, not OpenClaw sessions)
 async function checkActiveSubagentSessions() {
   try {
-    const response = await fetch('/api/active-sessions');
-    const data = await response.json();
+    // Fetch mode sessions (JSONL-based, from mode-sessions.js)
+    const modeRes = await fetch('/api/mode-sessions');
+    const modeData = await modeRes.json();
+    const modeSessions = modeData.sessions || {};
     
-    // Reset all to null
+    // Reset all
     activeSubagentSessions['spark-dev-mode'] = null;
     activeSubagentSessions['spark-research-mode'] = null;
     activeSubagentSessions['spark-plan-mode'] = null;
     activeSubagentSessions['spark-videogen-mode'] = null;
     
-    // Find matching subagent sessions
-    for (const session of (data.sessions || [])) {
-      const label = session.label || '';
-      if (label.includes('dev-mode') || session.key?.includes('dev-mode')) {
-        activeSubagentSessions['spark-dev-mode'] = session;
-      } else if (label.includes('research-mode') || session.key?.includes('research-mode')) {
-        activeSubagentSessions['spark-research-mode'] = session;
-      } else if (label.includes('plan-mode') || session.key?.includes('plan-mode')) {
-        activeSubagentSessions['spark-plan-mode'] = session;
-      } else if (label.includes('videogen-mode') || session.key?.includes('videogen-mode')) {
-        activeSubagentSessions['spark-videogen-mode'] = session;
+    // Map mode-sessions response to activeSubagentSessions
+    const modeMap = {
+      'dev': 'spark-dev-mode',
+      'research': 'spark-research-mode',
+      'plan': 'spark-plan-mode',
+      'videogen': 'spark-videogen-mode'
+    };
+    
+    for (const [mode, sessionData] of Object.entries(modeSessions)) {
+      const label = modeMap[mode];
+      if (label && sessionData.exists) {
+        // Session exists (has JSONL file) — mark as active
+        activeSubagentSessions[label] = {
+          key: sessionData.sessionId,
+          label: sessionData.label,
+          active: sessionData.active,
+          exists: sessionData.exists,
+          lastUpdated: sessionData.lastUpdated
+        };
       }
     }
     
-    // Update button visual states
     updateSubagentButtonStates();
-    
-    // Save session state to localStorage
     saveSessionState();
   } catch (e) {
     console.error('Failed to check active sessions:', e);
@@ -2388,9 +2392,6 @@ const sessionMessagesEl = document.getElementById('session-messages');
 const sessionInput = document.getElementById('session-input');
 const sessionSendBtn = document.getElementById('session-send-btn');
 const sessionBackBtn = document.getElementById('session-back-btn');
-const sessionIcon = document.getElementById('session-icon');
-const sessionTitle = document.getElementById('session-title');
-const sessionStatus = document.getElementById('session-status');
 
 let currentSessionMode = null; // 'dev', 'research', 'plan', 'video'
 let sessionPageProcessing = false;
@@ -2477,33 +2478,14 @@ function restoreSessionState() {
 
 let sessionStatusInterval = null;
 
-// Start polling when session page opens
+// Start polling when session page opens (refreshes mode button states)
 function startSessionStatusPolling() {
   stopSessionStatusPolling(); // Clear any existing
   
   sessionStatusInterval = setInterval(async () => {
     if (!currentSessionMode) return;
-    
-    try {
-      const res = await fetch('/api/mode-sessions');
-      const data = await res.json();
-      const sessions = data.sessions || data;
-      const modeData = sessions[currentSessionMode];
-      
-      if (modeData) {
-        if (modeData.active) {
-          sessionStatus.textContent = '● Running';
-          sessionStatus.classList.add('active');
-          sessionStatus.classList.remove('completed');
-        } else if (modeData.exists) {
-          sessionStatus.textContent = '● Idle';
-          sessionStatus.classList.remove('active');
-          sessionStatus.classList.add('completed');
-        }
-      }
-    } catch (e) {
-      console.error('Session status poll failed:', e);
-    }
+    // Just refresh the mode button states
+    checkActiveSubagentSessions();
   }, 15000); // Every 15 seconds
 }
 
@@ -2524,20 +2506,8 @@ async function showSessionPage(mode) {
   
   currentSessionMode = mode;
   
-  // Update header
-  sessionIcon.textContent = config.icon;
-  sessionTitle.textContent = config.name;
+  // Update input placeholder
   sessionInput.placeholder = config.placeholder;
-  
-  // Check if session is active
-  const activeSession = getActiveSession(mode);
-  if (activeSession) {
-    sessionStatus.textContent = '● Active';
-    sessionStatus.classList.add('active');
-  } else {
-    sessionStatus.textContent = 'Session';
-    sessionStatus.classList.remove('active');
-  }
   
   // Clear messages
   sessionMessagesEl.innerHTML = '';
