@@ -376,11 +376,46 @@ export function getModeHistory(mode, limit = 50) {
           if (hasThinking && !msg.content.some(c => c.type === 'text')) continue;
         }
 
-        const text = extractTextFromContent(msg.content);
+        let text = extractTextFromContent(msg.content);
         if (!text) continue;
 
-        // Skip system/heartbeat messages
+        // Skip heartbeat messages
         if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
+
+        // Skip WhatsApp metadata leakage
+        if (text.includes('[WhatsApp ') || text.includes('[message_id:') || text.includes('[media attached:')) continue;
+
+        // Skip gateway status messages
+        if (text.includes('WhatsApp gateway disconnected') || text.includes('WhatsApp gateway connected')) continue;
+
+        // Skip messages with base64 image data or other huge content (not useful for display)
+        if (text.length > 10000) continue;
+
+        // Strip [System Context: ...] wrapper from user messages
+        // The system prompt is wrapped as: [System Context: ...multi-line-prompt...]\n\nActual message
+        // We need to find the closing ']' of the context block, then extract after \n\n
+        if (text.includes('[System Context:')) {
+          const contextStart = text.indexOf('[System Context:');
+          // Find the matching closing bracket — the system prompt may contain newlines
+          // Look for ']\n\n' which marks end of context block + separator
+          const contextEnd = text.indexOf(']\n\n', contextStart);
+          if (contextEnd !== -1) {
+            const afterContext = text.slice(contextEnd + 3).trim();
+            if (afterContext) {
+              text = afterContext;
+            } else {
+              continue; // System context only, no actual message after it
+            }
+          } else {
+            // No closing bracket + double newline — might be just system context
+            continue;
+          }
+        }
+
+        // Strip timestamp prefix if present: [Sat 2026-02-07 07:43 UTC] ...
+        text = text.replace(/^\[\w{3}\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\w+\]\s*/, '').trim();
+
+        if (!text) continue;
 
         messages.push({
           role: msg.role,

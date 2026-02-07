@@ -33,7 +33,6 @@ const uploadBtn = document.getElementById('upload-btn');
 const fileInput = document.getElementById('file-input');
 const bottomEl = document.getElementById('bottom');
 const sparkStatusEl = document.getElementById('spark-status');
-let activeSessionsData = { count: 0, thinking: false, sessions: [] };
 
 // Update Spark gateway connection status pill
 function updateSparkStatus(state) {
@@ -42,8 +41,6 @@ function updateSparkStatus(state) {
   if (state === 'connected') {
     sparkStatusEl.classList.add('connected');
     sparkStatusEl.title = 'Clawdbot Gateway: Connected';
-    // Fetch sessions on connect
-    fetchActiveSessions();
   } else if (state === 'connecting') {
     sparkStatusEl.classList.add('connecting');
     sparkStatusEl.title = 'Clawdbot Gateway: Connecting...';
@@ -51,150 +48,6 @@ function updateSparkStatus(state) {
     // disconnected - no class, shows red
     sparkStatusEl.title = 'Clawdbot Gateway: Disconnected';
   }
-}
-
-// Fetch active sessions from gateway
-async function fetchActiveSessions() {
-  try {
-    const res = await fetch('/api/active-sessions');
-    const data = await res.json();
-    activeSessionsData = data;
-    updateSparkPillText();
-  } catch (e) {
-    console.error('Failed to fetch active sessions:', e);
-  }
-}
-
-// Update pill to show session status
-function updateSparkPillText() {
-  if (!sparkStatusEl) return;
-  
-  // Find or create count badge
-  let countBadge = sparkStatusEl.querySelector('.session-count');
-  if (!countBadge) {
-    countBadge = document.createElement('span');
-    countBadge.className = 'session-count';
-    sparkStatusEl.appendChild(countBadge);
-  }
-  
-  // Count sub-agents (sessions that aren't main)
-  const subAgentCount = (activeSessionsData.sessions || []).filter(s => s.isSubagent).length;
-  
-  // Green outline ONLY when processing OR sub-agents running
-  if (isProcessing || subAgentCount > 0) {
-    sparkStatusEl.classList.add('active');
-  } else {
-    sparkStatusEl.classList.remove('active');
-  }
-  
-  // Show count only when sub-agents are running
-  if (subAgentCount > 0) {
-    countBadge.textContent = subAgentCount;
-    countBadge.style.display = 'flex';
-  } else {
-    countBadge.style.display = 'none';
-  }
-}
-
-// Toggle sessions popup on click
-sparkStatusEl?.addEventListener('click', (e) => {
-  e.stopPropagation(); // Prevent immediate re-close from document click listener
-  const existing = document.getElementById('sessions-popup');
-  if (existing) {
-    // Popup is open, close it
-    existing.remove();
-  } else {
-    // Popup is closed, open it
-    showSessionsPopup();
-    // Refresh in background
-    fetchActiveSessions().then(() => {
-      const popup = document.getElementById('sessions-popup');
-      if (popup) updateSessionsPopupContent(popup);
-    });
-  }
-});
-
-function getSessionDescription(s) {
-  // Extract task type from label
-  const label = (s.label || '').toLowerCase();
-  if (label.includes('engineer')) return 'Implementing fixes...';
-  if (label.includes('qa')) return 'Reviewing code...';
-  if (label.includes('dev')) return 'Running dev workflow...';
-  if (label.includes('test')) return 'Running test...';
-  return 'Working...';
-}
-
-function getSessionIcon(s) {
-  // SVG icons instead of emojis
-  if (s.isMain) {
-    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3L4 14h7v7l9-11h-7V3z"/></svg>`;
-  }
-  if (s.isSubagent) {
-    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>`;
-  }
-  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>`;
-}
-
-function updateSessionsPopupContent(popup) {
-  const sessions = activeSessionsData.sessions || [];
-  // Only show sub-agents (background tasks), not main session
-  const subAgents = sessions.filter(s => s.isSubagent);
-  
-  if (subAgents.length === 0) {
-    popup.innerHTML = `
-      <div style="color: var(--text-secondary); font-size: 14px;">
-        No background tasks running
-      </div>
-    `;
-  } else {
-    popup.innerHTML = `
-      <div style="font-weight: 600; margin-bottom: 12px; font-size: 14px; color: var(--text);">
-        Background Tasks (${subAgents.length})
-      </div>
-      ${subAgents.map(s => `
-        <div style="padding: 10px; background: var(--input-bg); 
-          border-radius: 8px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px;">
-          <div style="opacity: 0.6; margin-top: 2px;">${getSessionIcon(s)}</div>
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 500; font-size: 13px; color: var(--text);">
-              ${escapeHtml(s.label || 'Task')}
-            </div>
-            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
-              ${getSessionDescription(s)}
-            </div>
-          </div>
-        </div>
-      `).join('')}
-    `;
-  }
-}
-
-function showSessionsPopup() {
-  // Remove existing popup
-  document.getElementById('sessions-popup')?.remove();
-  
-  const popup = document.createElement('div');
-  popup.id = 'sessions-popup';
-  popup.style.cssText = `
-    position: fixed; top: 70px; left: 16px;
-    background: var(--bg); border-radius: 12px;
-    padding: 16px; min-width: 260px; max-width: 320px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-    border: 1px solid var(--input-border);
-    z-index: 1000;
-  `;
-  
-  updateSessionsPopupContent(popup);
-  document.body.appendChild(popup);
-  
-  // Close on click outside
-  const closePopup = (e) => {
-    if (!popup.contains(e.target) && !sparkStatusEl.contains(e.target)) {
-      popup.remove();
-      document.removeEventListener('click', closePopup);
-    }
-  };
-  setTimeout(() => document.addEventListener('click', closePopup), 10);
 }
 const voiceBar = document.getElementById('voice-bar');
 const closeVoiceBtn = document.getElementById('close-voice-btn');
@@ -1826,7 +1679,6 @@ async function send(text, sendMode) {
   }
   
   isProcessing = true;
-  updateSparkPillText();
   
   // Add user message (history should already be rendered above if on intro)
   const el = document.createElement('div');
@@ -1985,8 +1837,6 @@ function handle(data) {
       isProcessing = false;
       sessionPageProcessing = false;
       setStatus('');
-      updateSparkPillText();
-      fetchActiveSessions(); // Refresh sessions after response
       checkActiveSubagentSessions(); // Refresh mode button states (also saves session state + updates bar)
       saveSessionState(); // Persist session state (sessions may have completed)
       refreshHistoryCache(); // Keep history cache up to date
@@ -2004,8 +1854,6 @@ function handle(data) {
       toast(data.message || 'Error', true);
       isProcessing = false;
       setStatus('');
-      updateSparkPillText();
-      fetchActiveSessions();
       break;
     
     case 'mode_history':
@@ -3510,7 +3358,6 @@ function sendVideoGenWithImage(command, imageData) {
     return;
   }
   isProcessing = true;
-  updateSparkPillText();
   
   // Show user message with image indicator
   const el = document.createElement('div');
@@ -3532,7 +3379,6 @@ function sendFaceSwapRequest(command, imageData, videoData, videoUrl) {
     return;
   }
   isProcessing = true;
-  updateSparkPillText();
   
   // Show user message
   const el = document.createElement('div');

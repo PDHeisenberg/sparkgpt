@@ -24,8 +24,24 @@ export function loadGatewayToken() {
   return null;
 }
 
+// Mode session IDs that should NOT be treated as the main session
+// These are deterministic IDs used by SparkGPT mode routing
+const MODE_SESSION_IDS = new Set([
+  'spark-dev-00000-0000-0000-000000000001',
+  'spark-res-00000-0000-0000-000000000002',
+  'spark-pln-00000-0000-0000-000000000003',
+  'spark-vid-00000-0000-0000-000000000004',
+]);
+
+// Default main session ID (WhatsApp main session)
+const DEFAULT_MAIN_SESSION_ID = '1e4cdd11-d94a-4ed8-b686-029d5fb50ac1';
+
 /**
  * Get main session ID dynamically from sessions.json
+ * 
+ * NOTE: OpenClaw CLI can overwrite the agent:main:main entry in sessions.json
+ * when mode sessions use `openclaw agent --session-id`. We must detect this
+ * and fall back to the known WhatsApp main session ID.
  */
 export function getMainSessionId() {
   try {
@@ -34,13 +50,18 @@ export function getMainSessionId() {
       const sessions = JSON.parse(readFileSync(sessionsPath, 'utf8'));
       const mainSession = sessions['agent:main:main'];
       if (mainSession?.sessionId) {
+        // Guard: don't return a mode session ID as the main session
+        if (MODE_SESSION_IDS.has(mainSession.sessionId)) {
+          console.warn(`⚠️ sessions.json agent:main:main points to mode session ${mainSession.sessionId}, using default`);
+          return DEFAULT_MAIN_SESSION_ID;
+        }
         return mainSession.sessionId;
       }
     }
   } catch (e) {
     console.error('Failed to read main session ID:', e.message);
   }
-  return '1e4cdd11-d94a-4ed8-b686-029d5fb50ac1';
+  return DEFAULT_MAIN_SESSION_ID;
 }
 
 /**

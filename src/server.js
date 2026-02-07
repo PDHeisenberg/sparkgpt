@@ -55,7 +55,6 @@ import {
   WS_MAX_PAYLOAD,
   WS_HEARTBEAT_INTERVAL_MS,
   STALE_SESSION_MAX_AGE_MS,
-  ACTIVE_SESSION_THRESHOLD_MS,
   SYNC_POLL_INTERVAL_MS,
   SYNC_DEBOUNCE_MS,
   MAX_HASH_CACHE,
@@ -513,43 +512,6 @@ app.get('/api/nodes/status', async (req, res) => {
   } catch (e) {
     logError('Node status error:', e.message);
     res.json({ connected: false, error: e.message });
-  }
-});
-
-// Active sessions from OpenClaw gateway (running agents)
-app.get('/api/active-sessions', async (req, res) => {
-  try {
-    // Use CLI to get sessions (more reliable than HTTP API)
-    const output = execSync(`${OPENCLAW_PATH} sessions list --json --limit 20`, {
-      encoding: 'utf8',
-      timeout: 5000
-    });
-    
-    const data = JSON.parse(output);
-    const sessions = data.sessions || [];
-    
-    // Filter to recent active sessions (updated in last 5 minutes)
-    const fiveMinutesAgo = Date.now() - ACTIVE_SESSION_THRESHOLD_MS;
-    const activeSessions = sessions
-      .filter(s => s.updatedAt > fiveMinutesAgo)
-      .map(s => ({
-        key: s.key,
-        label: s.label || (s.key?.includes('subagent') ? s.key.split(':').pop().slice(0, 8) : 'main'),
-        kind: s.kind,
-        updatedAt: s.updatedAt,
-        isMain: s.key === 'agent:main:main',
-        isSubagent: s.key?.includes('subagent'),
-        model: s.model
-      }));
-    
-    res.json({
-      count: activeSessions.length,
-      thinking: false, // Will be set by frontend based on isProcessing
-      sessions: activeSessions
-    });
-  } catch (e) {
-    logError('Active sessions error:', e.message);
-    res.json({ count: 0, thinking: false, sessions: [], error: e.message });
   }
 });
 
