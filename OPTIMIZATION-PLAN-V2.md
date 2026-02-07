@@ -8,7 +8,7 @@
 
 ---
 
-## Phase 1: Critical Bug Fix — `clawdbot` → `openclaw` ✅
+## Phase 1: Critical Bug Fix — `clawdbot` → `openclaw` ✅ DONE
 
 **Problem**: The `clawdbot` CLI was renamed to `openclaw`. The old path `/home/heisenberg/.npm-global/bin/clawdbot` no longer exists, causing `/api/nodes/status` and `/api/active-sessions` endpoints to fail with "not found" errors every poll cycle.
 
@@ -22,7 +22,7 @@
 
 ---
 
-## Phase 2: Dead Code & Duplication Cleanup
+## Phase 2: Dead Code & Duplication Cleanup ✅ DONE
 
 ### 2a: Remove dead code
 - **`handleTranscriptIsolated()`** in `server.js` — Legacy function, never called. Remove entirely.
@@ -50,7 +50,7 @@ Create `src/services/shared.js` to consolidate duplicated functions:
 
 ---
 
-## Phase 3: Code Quality
+## Phase 3: Code Quality (Partial ✅)
 
 ### 3a: Constants file
 Create `src/constants.js` with magic numbers:
@@ -94,9 +94,25 @@ Add validation before sending file data in `app.js`.
 
 ---
 
-## Execution Order
-1. ✅ Phase 1 (critical fix)
-2. Phase 2a (dead code)
-3. Phase 2b+2c (shared module + session ID fix)
-4. Phase 3a (constants)
-5. Phases 3b, 3c, 4, 5 (deferred to future iteration)
+## Execution Log
+1. ✅ **Phase 1** — Fixed `clawdbot` → `openclaw` CLI path (commit `2b0aff8`)
+2. ✅ **Phase 2a** — Removed 114 lines of dead code (commit `aafe988`)
+3. ✅ **Phase 2b+2c** — Created shared.js, eliminated 5 duplicate functions, fixed 2 hardcoded session IDs (commit `4919f0c`)
+4. ✅ **Phase 3a** — Created constants.js, replaced 12+ magic numbers (commit `fa26796`)
+5. ⏳ **Phases 3b, 3c, 4, 5** — Deferred to future iteration (WebSocket validation, file size limits, XSS, logging)
+
+## Results Summary
+| Metric | Before | After | Change |
+|--------|--------|-------|--------|
+| server.js | 1,644 | 1,564 | -80 |
+| config.js | 107 | 84 | -23 |
+| realtime.js | 398 | 314 | -84 |
+| hybrid-realtime.js | 427 | 334 | -93 |
+| tools.js | 267 | 257 | -10 |
+| shared.js | 0 | 135 | +135 (new) |
+| constants.js | 0 | 64 | +64 (new) |
+| **Total backend** | **3,041** | **2,950** | **-91 net** |
+| Duplicate functions | 5 | 0 | Eliminated |
+| Hardcoded session IDs | 2 | 0 | Fixed |
+| Dead code functions | 2 | 0 | Removed |
+| Critical bug (broken endpoints) | 1 | 0 | Fixed |
