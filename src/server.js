@@ -49,6 +49,18 @@ import {
   extractTextFromContent,
   hashMessage
 } from './services/session.js';
+import {
+  CLI_TIMEOUT_MS,
+  CHAT_TIMEOUT_MS,
+  WS_MAX_PAYLOAD,
+  WS_HEARTBEAT_INTERVAL_MS,
+  STALE_SESSION_MAX_AGE_MS,
+  ACTIVE_SESSION_THRESHOLD_MS,
+  SYNC_POLL_INTERVAL_MS,
+  SYNC_DEBOUNCE_MS,
+  MAX_HASH_CACHE,
+  MAX_FILE_TEXT_CLI,
+} from './constants.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
@@ -515,7 +527,7 @@ app.get('/api/active-sessions', async (req, res) => {
     const sessions = data.sessions || [];
     
     // Filter to recent active sessions (updated in last 5 minutes)
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    const fiveMinutesAgo = Date.now() - ACTIVE_SESSION_THRESHOLD_MS;
     const activeSessions = sessions
       .filter(s => s.updatedAt > fiveMinutesAgo)
       .map(s => ({
@@ -678,7 +690,7 @@ app.post('/api/notes/save-file', express.json(), async (req, res) => {
 const server = createServer(app);
 
 // WebSocket server for chat/notes (existing)
-const wss = new WebSocketServer({ noServer: true, maxPayload: 50 * 1024 * 1024 });
+const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD });
 
 // WebSocket server for realtime voice (new)
 const wssRealtime = new WebSocketServer({ noServer: true });
@@ -727,7 +739,7 @@ let syncInitialized = false;
 
 // Track recently sent message IDs to avoid duplicate sync (by content hash)
 const recentlySentHashes = new Set();
-const MAX_HASH_CACHE = 100;
+// MAX_HASH_CACHE imported from constants.js
 // hashMessage imported from ./services/session.js
 
 // Poll the main session transcript for new messages and broadcast to portal clients
@@ -888,7 +900,7 @@ function debouncedSync() {
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
   syncDebounceTimer = setTimeout(() => {
     pollForSync();
-  }, 100); // 100ms debounce - fast but not excessive
+  }, SYNC_DEBOUNCE_MS);
 }
 
 function startFileWatcher() {
@@ -932,13 +944,12 @@ if (UNIFIED_SESSION) {
   startFileWatcher();
   
   // Backup: poll every 1s - file watching is unreliable on Linux
-  setInterval(pollForSync, 1000);
+  setInterval(pollForSync, SYNC_POLL_INTERVAL_MS);
   console.log('📡 Real-time sync: file watching + 1s backup poll');
 }
 
 // WebSocket heartbeat to detect dead connections
-const HEARTBEAT_INTERVAL = 15000; // 15 seconds
-const HEARTBEAT_TIMEOUT = 10000; // 10 seconds to respond
+// Heartbeat intervals imported from constants.js
 
 setInterval(() => {
   for (const client of portalClients) {
@@ -956,12 +967,12 @@ setInterval(() => {
     client.isAlive = false;
     client.ping();
   }
-}, HEARTBEAT_INTERVAL);
+}, WS_HEARTBEAT_INTERVAL_MS);
 
 // Periodic cleanup of stale sessions (every hour)
 setInterval(() => {
   const now = Date.now();
-  const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+  const MAX_AGE = STALE_SESSION_MAX_AGE_MS;
   let cleaned = 0;
   
   for (const [sessionId, session] of sessions.entries()) {
@@ -1186,7 +1197,7 @@ async function routeThroughOpenClaw(ws, sessionId, text, isRetry = false) {
   if (ws) processingClients.add(ws);
   
   return new Promise((resolve) => {
-    const timeout = 5 * 60 * 1000; // 5 minutes timeout
+    const timeout = CLI_TIMEOUT_MS;
     let stdout = '';
     let stderr = '';
     let completed = false;
@@ -1340,8 +1351,8 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
       }
       
       // Truncate if too long (keep first 30k chars for CLI)
-      if (extractedText.length > 30000) {
-        extractedText = extractedText.slice(0, 30000) + '\n\n[... truncated ...]';
+      if (extractedText.length > MAX_FILE_TEXT_CLI) {
+        extractedText = extractedText.slice(0, MAX_FILE_TEXT_CLI) + '\n\n[... truncated ...]';
       }
       
       fullText = `${text}\n\n[File: ${fileData.filename}]\n\n${extractedText}`;
@@ -1438,7 +1449,7 @@ async function chat(history, model, mode, hasImage = false) {
 
   // 5 minute timeout to prevent infinite hangs (increased for Opus + thinking)
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 300000);
+  const timeoutId = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
   
   try {
     const jsonBody = JSON.stringify(body);

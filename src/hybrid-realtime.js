@@ -14,6 +14,7 @@
 
 import WebSocket from 'ws';
 import { getOpenAIKey, getGatewayToken, loadConversationContext, appendToSession } from './services/shared.js';
+import { SPEAKING_TIMEOUT_MS, AUDIO_CHUNK_SIZE } from './constants.js';
 
 // OpenAI Realtime API endpoint
 const REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
@@ -215,7 +216,7 @@ export function handleHybridRealtimeSession(clientWs) {
                   console.log('⚠️ Speaking timeout - resuming listening');
                   isSpeaking = false;
                 }
-              }, 30000);
+              }, SPEAKING_TIMEOUT_MS);
               
               clientWs.send(JSON.stringify({ type: 'tts_start' }));
               
@@ -224,7 +225,7 @@ export function handleHybridRealtimeSession(clientWs) {
                 const audioBase64 = await generateTTS(response, apiKey);
                 
                 // Send audio in chunks for streaming playback
-                const chunkSize = 24000; // ~0.5 seconds of audio
+                const chunkSize = AUDIO_CHUNK_SIZE;
                 for (let i = 0; i < audioBase64.length; i += chunkSize) {
                   const chunk = audioBase64.slice(i, i + chunkSize);
                   clientWs.send(JSON.stringify({ type: 'audio_chunk', data: chunk }));
