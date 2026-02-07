@@ -7,7 +7,7 @@
  */
 
 import { spawn } from 'child_process';
-import { readFileSync, existsSync, statSync } from 'fs';
+import { readFileSync, existsSync, statSync, watch, openSync, readSync, closeSync } from 'fs';
 import { join } from 'path';
 import { log, debug, error as logError } from './logger.js';
 import { CLI_TIMEOUT_MS } from './constants.js';
@@ -75,6 +75,145 @@ export function getModeSessionConfig(mode) {
 }
 
 /**
+ * Watch a session's JSONL transcript file for new tool call entries
+ * and send progress updates via the provided callback.
+ * 
+ * @param {string} sessionId - The OpenClaw session ID
+ * @param {Function} sendProgress - Callback to send progress updates
+ * @param {AbortSignal} abortSignal - Signal to stop watching
+ * @returns {Function} - Cleanup function
+ */
+function watchSessionProgress(sessionId, sendProgress, abortSignal) {
+  const transcriptPath = join(SESSIONS_DIR, `${sessionId}.jsonl`);
+  let lastSize = 0;
+  let watcher = null;
+  let checkInterval = null;
+  let stopped = false;
+
+  function cleanup() {
+    stopped = true;
+    if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+    if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
+  }
+
+  function processNewData() {
+    if (stopped) return;
+    try {
+      const stat = statSync(transcriptPath);
+      if (stat.size <= lastSize) return;
+
+      const fd = openSync(transcriptPath, 'r');
+      try {
+        const buffer = Buffer.alloc(stat.size - lastSize);
+        readSync(fd, buffer, 0, buffer.length, lastSize);
+        lastSize = stat.size;
+
+        const newText = buffer.toString('utf8');
+        const lines = newText.split('\n').filter(l => l.trim());
+
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line);
+            const progress = extractProgress(entry);
+            if (progress) sendProgress(progress);
+          } catch {
+            // Skip malformed lines
+          }
+        }
+      } finally {
+        closeSync(fd);
+      }
+    } catch (e) {
+      // File might be temporarily unavailable, that's ok
+      debug(`Transcript watch read error: ${e.message}`);
+    }
+  }
+
+  function startWatching() {
+    if (stopped) return;
+    // Capture initial size so we only process new data
+    try {
+      lastSize = statSync(transcriptPath).size;
+    } catch {
+      lastSize = 0;
+    }
+
+    watcher = watch(transcriptPath, (eventType) => {
+      if (eventType === 'change') processNewData();
+    });
+
+    watcher.on('error', (e) => {
+      debug(`Transcript watcher error: ${e.message}`);
+      cleanup();
+    });
+  }
+
+  // The transcript file might not exist yet when session starts — poll for it
+  if (existsSync(transcriptPath)) {
+    startWatching();
+  } else {
+    checkInterval = setInterval(() => {
+      if (stopped) { cleanup(); return; }
+      if (existsSync(transcriptPath)) {
+        clearInterval(checkInterval);
+        checkInterval = null;
+        startWatching();
+      }
+    }, 500);
+  }
+
+  // Cleanup on abort signal
+  if (abortSignal) {
+    abortSignal.addEventListener('abort', cleanup, { once: true });
+  }
+
+  return cleanup;
+}
+
+/**
+ * Extract a human-readable progress message from a JSONL transcript entry.
+ * Only returns progress for tool call entries.
+ */
+function extractProgress(entry) {
+  if (entry.type !== 'message' || !entry.message) return null;
+  const msg = entry.message;
+
+  // Only care about assistant messages with tool calls
+  if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+    for (const part of msg.content) {
+      if (part.type === 'toolCall' || part.type === 'tool_use') {
+        const name = part.name || part.function?.name || 'working';
+        const args = part.arguments || part.input || {};
+
+        const progressMap = {
+          'exec':        'Running command...',
+          'read':        `Reading ${args.path || args.file_path || 'file'}...`,
+          'Read':        `Reading ${args.path || args.file_path || 'file'}...`,
+          'Edit':        `Editing ${args.path || args.file_path || 'file'}...`,
+          'edit':        `Editing ${args.path || args.file_path || 'file'}...`,
+          'Write':       `Writing ${args.path || args.file_path || 'file'}...`,
+          'write':       `Writing ${args.path || args.file_path || 'file'}...`,
+          'web_search':  `Searching: ${args.query || ''}...`,
+          'web_fetch':   `Fetching ${args.url || 'page'}...`,
+          'browser':     'Using browser...',
+          'image':       'Analyzing image...',
+          'sessions_spawn': 'Spawning sub-agent...',
+        };
+
+        return {
+          type: 'progress',
+          status: progressMap[name] || `${name}...`,
+          tool: name,
+          detail: typeof args === 'object' ? JSON.stringify(args).slice(0, 100) : ''
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Route a message to an isolated mode session via OpenClaw CLI
  * 
  * @param {WebSocket} ws - WebSocket client
@@ -109,6 +248,17 @@ export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
     let stderr = '';
     let completed = false;
 
+    // Start watching the transcript file for real-time progress updates
+    const abortController = new AbortController();
+    const stopWatching = watchSessionProgress(
+      modeConfig.sessionId,
+      (progress) => {
+        debug(`📊 [${sessionId}] Progress: ${progress.status}`);
+        sendToClient(sessionId, progress);
+      },
+      abortController.signal
+    );
+
     // Use openclaw agent CLI with --session-id to target the isolated mode session
     const proc = spawn(OPENCLAW_PATH, [
       'agent',
@@ -131,6 +281,7 @@ export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
     const timeoutId = setTimeout(() => {
       if (!completed) {
         completed = true;
+        abortController.abort();
         proc.kill('SIGTERM');
         logError(`[${sessionId}] Mode ${mode} timeout after ${timeout / 1000}s`);
         sendToClient(sessionId, { type: 'error', message: `${mode} mode request timed out` });
@@ -141,6 +292,7 @@ export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
 
     proc.on('close', (code) => {
       clearTimeout(timeoutId);
+      abortController.abort();
       if (completed) return;
       completed = true;
 
@@ -173,6 +325,7 @@ export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
 
     proc.on('error', (e) => {
       clearTimeout(timeoutId);
+      abortController.abort();
       if (completed) return;
       completed = true;
 

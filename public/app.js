@@ -774,6 +774,21 @@ function removeThinking() {
   document.getElementById('thinking-indicator')?.remove();
 }
 
+function updateThinking(statusText) {
+  const el = document.getElementById('thinking-indicator');
+  if (!el) {
+    showThinking();
+    return updateThinking(statusText);
+  }
+  el.innerHTML = `
+    <div class="thinking-content">
+      <span class="thinking-status">${escapeHtml(statusText)}</span>
+      <div class="thinking-dots"><span></span><span></span><span></span></div>
+    </div>
+  `;
+  scrollToBottomIfNeeded();
+}
+
 function setStatus(text) {
   if (statusEl) {
     statusEl.textContent = text;
@@ -1911,6 +1926,15 @@ function handle(data) {
         showThinking();
       }
       break;
+    case 'progress':
+      // Real-time progress from transcript watcher (tool calls)
+      console.log('📊 Progress:', data.status);
+      if (currentSessionMode && sessionPage.classList.contains('show')) {
+        updateSessionThinking(data.status);
+      } else {
+        updateThinking(data.status);
+      }
+      break;
     case 'text':
       console.log('✅ Text message received:', data.content?.slice?.(0, 100));
       // Route to notes view if in notes mode
@@ -2525,6 +2549,22 @@ function showSessionThinking() {
 // Remove thinking indicator from session
 function removeSessionThinking() {
   document.getElementById('session-thinking-indicator')?.remove();
+}
+
+// Update session thinking indicator with progress text
+function updateSessionThinking(statusText) {
+  const el = document.getElementById('session-thinking-indicator');
+  if (!el) {
+    showSessionThinking();
+    return updateSessionThinking(statusText);
+  }
+  el.innerHTML = `
+    <div class="thinking-content">
+      <span class="thinking-status">${escapeHtml(statusText)}</span>
+      <div class="thinking-dots"><span></span><span></span><span></span></div>
+    </div>
+  `;
+  if (sessionMessagesEl) sessionMessagesEl.scrollTop = sessionMessagesEl.scrollHeight;
 }
 
 // Send message in session page
