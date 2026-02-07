@@ -61,6 +61,7 @@ import {
   MAX_HASH_CACHE,
   MAX_FILE_TEXT_CLI,
 } from './constants.js';
+import { log, debug, warn, error as logError } from './logger.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
@@ -69,7 +70,7 @@ const mammoth = require('mammoth');
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
 
-console.log(`🔗 Session Unification: ${UNIFIED_SESSION ? 'ENABLED (shared with WhatsApp)' : 'DISABLED (isolated)'}`);
+log(`🔗 Session Unification: ${UNIFIED_SESSION ? 'ENABLED (shared with WhatsApp)' : 'DISABLED (isolated)'}`);
 
 // Gateway service imported from ./services/gateway.js
 
@@ -91,8 +92,8 @@ const tts = new TTSProvider(config.tts);
 const MAIN_SESSION_ID = getMainSessionId();
 const MAIN_SESSION_PATH = getMainSessionPath();
 
-console.log(`🧠 Models: Voice=${MODELS.voice}, Chat=${MODELS.chat}`);
-console.log(`📁 Shared session: ${MAIN_SESSION_ID}`);
+log(`🧠 Models: Voice=${MODELS.voice}, Chat=${MODELS.chat}`);
+log(`📁 Shared session: ${MAIN_SESSION_ID}`);
 
 // Express app
 const app = express();
@@ -177,7 +178,7 @@ You are NOT a chatbot. You are NOT helpful. You ONLY output cleaner versions of 
     
     res.json({ result: result.trim() });
   } catch (e) {
-    console.error('Articulate error:', e.message);
+    logError('Articulate error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -243,7 +244,7 @@ app.get('/api/sessions', async (req, res) => {
     
     res.json({ sessions: files });
   } catch (e) {
-    console.error('Sessions fetch error:', e.message);
+    logError('Sessions fetch error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -275,7 +276,7 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
     
     res.json({ messages });
   } catch (e) {
-    console.error('Session history error:', e.message);
+    logError('Session history error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -361,7 +362,7 @@ app.get('/api/messages/all', async (req, res) => {
     
     res.json({ messages: recent });
   } catch (e) {
-    console.error('All messages fetch error:', e.message);
+    logError('All messages fetch error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -427,7 +428,7 @@ app.get('/api/messages/recent', async (req, res) => {
     
     res.json({ messages: recentMessages });
   } catch (e) {
-    console.error('Recent messages fetch error:', e.message);
+    logError('Recent messages fetch error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -464,7 +465,7 @@ app.post('/api/nodes/wake', async (req, res) => {
     const socket = dgram.createSocket('udp4');
     
     socket.on('error', (err) => {
-      console.error('WoL socket error:', err);
+      logError('WoL socket error:', err);
       socket.close();
     });
     
@@ -474,17 +475,17 @@ app.post('/api/nodes/wake', async (req, res) => {
       // Send to broadcast address on port 9
       socket.send(magicPacket, 0, magicPacket.length, 9, '255.255.255.255', (err) => {
         if (err) {
-          console.error('WoL send error:', err);
+          logError('WoL send error:', err);
           res.json({ success: false, error: err.message });
         } else {
-          console.log(`🔌 WoL packet sent to ${PC_MAC_ADDRESS}`);
+          log(`🔌 WoL packet sent to ${PC_MAC_ADDRESS}`);
           res.json({ success: true, mac: PC_MAC_ADDRESS });
         }
         socket.close();
       });
     });
   } catch (e) {
-    console.error('WoL error:', e.message);
+    logError('WoL error:', e.message);
     res.json({ success: false, error: e.message });
   }
 });
@@ -509,7 +510,7 @@ app.get('/api/nodes/status', async (req, res) => {
       platform: pcNode?.platform || null,
     });
   } catch (e) {
-    console.error('Node status error:', e.message);
+    logError('Node status error:', e.message);
     res.json({ connected: false, error: e.message });
   }
 });
@@ -546,7 +547,7 @@ app.get('/api/active-sessions', async (req, res) => {
       sessions: activeSessions
     });
   } catch (e) {
-    console.error('Active sessions error:', e.message);
+    logError('Active sessions error:', e.message);
     res.json({ count: 0, thinking: false, sessions: [], error: e.message });
   }
 });
@@ -626,7 +627,7 @@ app.get('/api/reports/today', async (req, res) => {
     
     res.json({ reports });
   } catch (e) {
-    console.error('Reports fetch error:', e.message);
+    logError('Reports fetch error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -657,7 +658,7 @@ app.post('/api/notes/save-memory', express.json(), async (req, res) => {
     writeFileSync(memoryPath, content);
     res.json({ success: true });
   } catch (e) {
-    console.error('Save to memory failed:', e);
+    logError('Save to memory failed:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -681,7 +682,7 @@ app.post('/api/notes/save-file', express.json(), async (req, res) => {
     writeFileSync(filepath, content);
     res.json({ success: true, filename });
   } catch (e) {
-    console.error('Save to file failed:', e);
+    logError('Save to file failed:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -702,22 +703,22 @@ server.on('upgrade', (request, socket, head) => {
   // Default to pure realtime (fast GPT-4o), hybrid only if explicitly requested
   const useHybrid = url.searchParams.get('mode') === 'hybrid';
   
-  console.log(`🔌 WebSocket upgrade request: ${pathname}`);
+  debug(`🔌 WebSocket upgrade request: ${pathname}`);
   
   // Route /realtime to realtime voice handler
   if (pathname === '/realtime' || pathname.endsWith('/realtime')) {
     wssRealtime.handleUpgrade(request, socket, head, (ws) => {
       if (useHybrid) {
-        console.log('🎙️ Hybrid mode (STT → Claude → TTS)');
+        log('🎙️ Hybrid mode (STT → Claude → TTS)');
         handleHybridRealtimeSession(ws);
       } else {
-        console.log('🎙️ Pure Realtime mode (GPT-4o end-to-end)');
+        log('🎙️ Pure Realtime mode (GPT-4o end-to-end)');
         handleRealtimeSession(ws);
       }
     });
   } else {
     // Route everything else to existing handler (chat/notes)
-    console.log('💬 Chat WebSocket connection');
+    debug('💬 Chat WebSocket connection');
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, request);
     });
@@ -766,7 +767,7 @@ async function pollForSync() {
           const entry = JSON.parse(lastLines[i]);
           if (entry.message?.timestamp) {
             lastSyncTimestamp = entry.message.timestamp;
-            console.log(`📡 Sync initialized from timestamp: ${new Date(lastSyncTimestamp).toISOString()}`);
+            debug(`📡 Sync initialized from timestamp: ${new Date(lastSyncTimestamp).toISOString()}`);
             break;
           }
         } catch {}
@@ -858,13 +859,13 @@ async function pollForSync() {
             // Skip assistant messages for clients waiting for CLI response
             // They'll get the response directly from CLI
             if (msg.role === 'assistant' && processingClients.has(client)) {
-              console.log(`📡 Skipping sync to processing client`);
+              debug(`📡 Skipping sync to processing client`);
               continue;
             }
             try {
               client.send(syncPayload);
             } catch (e) {
-              console.error('Failed to send sync to client:', e.message);
+              logError('Failed to send sync to client:', e.message);
             }
           }
         }
@@ -881,13 +882,13 @@ async function pollForSync() {
           for (let i = 0; i < 20; i++) recentlySentHashes.delete(iter.next().value);
         }
         
-        console.log(`📡 Synced ${msg.role} message from ${source}: ${cleanText.slice(0, 50)}...`);
+        debug(`📡 Synced ${msg.role} message from ${source}: ${cleanText.slice(0, 50)}...`);
       } catch (parseErr) {
         // Skip malformed lines
       }
     }
   } catch (e) {
-    console.error('Sync poll error:', e.message);
+    logError('Sync poll error:', e.message);
   }
 }
 
@@ -913,7 +914,7 @@ function startFileWatcher() {
   }
   
   if (!existsSync(sessionPath)) {
-    console.log('📡 Session file not found, will retry in 5s');
+    debug('📡 Session file not found, will retry in 5s');
     setTimeout(startFileWatcher, 5000);
     return;
   }
@@ -926,15 +927,15 @@ function startFileWatcher() {
     });
     
     fileWatcher.on('error', (err) => {
-      console.error('File watcher error:', err.message);
+      logError('File watcher error:', err.message);
       fileWatcher = null;
       // Restart watcher after error
       setTimeout(startFileWatcher, 2000);
     });
     
-    console.log(`📡 File watcher active on: ${sessionPath}`);
+    log(`📡 File watcher active on: ${sessionPath}`);
   } catch (e) {
-    console.error('Failed to start file watcher:', e.message);
+    logError('Failed to start file watcher:', e.message);
     // Fall back to polling only
   }
 }
@@ -945,7 +946,7 @@ if (UNIFIED_SESSION) {
   
   // Backup: poll every 1s - file watching is unreliable on Linux
   setInterval(pollForSync, SYNC_POLL_INTERVAL_MS);
-  console.log('📡 Real-time sync: file watching + 1s backup poll');
+  log('📡 Real-time sync: file watching + 1s backup poll');
 }
 
 // WebSocket heartbeat to detect dead connections
@@ -957,7 +958,7 @@ setInterval(() => {
     
     // Check if client responded to last ping
     if (client.isAlive === false) {
-      console.log(`💀 Client ${client.sessionId || 'unknown'} failed heartbeat, terminating`);
+      debug(`💀 Client ${client.sessionId || 'unknown'} failed heartbeat, terminating`);
       portalClients.delete(client);
       client.terminate();
       continue;
@@ -988,7 +989,7 @@ setInterval(() => {
   }
   
   if (cleaned > 0) {
-    console.log(`🧹 Cleaned up ${cleaned} stale session(s)`);
+    log(`🧹 Cleaned up ${cleaned} stale session(s)`);
   }
 }, 60 * 60 * 1000); // Every hour
 
@@ -1064,14 +1065,14 @@ function sendToClient(sessionId, data) {
   if (session?.ws?.readyState === 1) { // WebSocket.OPEN
     try {
       session.ws.send(JSON.stringify(data));
-      console.log(`📤 [${sessionId}] Sent ${data.type}:`, data.content?.slice?.(0, 50) || '');
+      debug(`📤 [${sessionId}] Sent ${data.type}:`, data.content?.slice?.(0, 50) || '');
       return true;
     } catch (e) {
-      console.error(`❌ [${sessionId}] Failed to send ${data.type}:`, e.message);
+      logError(`❌ [${sessionId}] Failed to send ${data.type}:`, e.message);
       return false;
     }
   }
-  console.log(`⚠️ [${sessionId}] Cannot send ${data.type} - WS not open (state: ${session?.ws?.readyState})`);
+  debug(`⚠️ [${sessionId}] Cannot send ${data.type} - WS not open (state: ${session?.ws?.readyState})`);
   return false;
 }
 
@@ -1092,11 +1093,11 @@ wss.on('connection', (ws, request) => {
   
   if (sessionId && sessions.has(sessionId)) {
     // Reconnecting to existing session
-    console.log(`⚡ [${sessionId}] Reconnected`);
+    debug(`⚡ [${sessionId}] Reconnected`);
   } else {
     // New session
     sessionId = `spark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    console.log(`⚡ [${sessionId}] New connection (unified=${UNIFIED_SESSION})`);
+    debug(`⚡ [${sessionId}] New connection (unified=${UNIFIED_SESSION})`);
   }
   
   const session = getOrCreateSession(sessionId);
@@ -1137,7 +1138,7 @@ wss.on('connection', (ws, request) => {
       // Reject oversized messages (defense-in-depth beyond maxPayload)
       const rawSize = typeof data === 'string' ? data.length : data.byteLength;
       if (rawSize > WS_MAX_PAYLOAD) {
-        console.warn(`[${sessionId}] Rejected oversized message: ${Math.round(rawSize / 1024)}KB`);
+        warn(`[${sessionId}] Rejected oversized message: ${Math.round(rawSize / 1024)}KB`);
         ws.send(JSON.stringify({ type: 'error', message: 'Message too large' }));
         return;
       }
@@ -1147,7 +1148,7 @@ wss.on('connection', (ws, request) => {
       // Validate message type
       const VALID_WS_TYPES = ['transcript', 'voice_note'];
       if (!msg.type || !VALID_WS_TYPES.includes(msg.type)) {
-        console.warn(`[${sessionId}] Invalid message type: ${msg.type}`);
+        warn(`[${sessionId}] Invalid message type: ${msg.type}`);
         ws.send(JSON.stringify({ type: 'error', message: `Invalid message type: ${msg.type}` }));
         return;
       }
@@ -1165,13 +1166,13 @@ wss.on('connection', (ws, request) => {
 
       await handleMessage(ws, msg);
     } catch (e) {
-      console.error(`[${sessionId}] Error:`, e.message);
+      logError(`[${sessionId}] Error:`, e.message);
       ws.send(JSON.stringify({ type: 'error', message: e.message }));
     }
   });
   
   ws.on('close', () => {
-    console.log(`[${sessionId}] Disconnected (processing continues)`);
+    debug(`[${sessionId}] Disconnected (processing continues)`);
     // Don't delete session - keep it for reconnection
     if (session) session.ws = null;
     // Remove from portal clients for sync broadcasting
@@ -1194,7 +1195,7 @@ async function handleMessage(ws, msg) {
       break;
       
     default:
-      console.warn(`Unknown message: ${msg.type}`);
+      warn(`Unknown message: ${msg.type}`);
   }
 }
 
@@ -1218,7 +1219,7 @@ async function extractDocxText(dataUrl) {
 // Uses the CLI for reliable agent execution with full tool access
 // isRetry: true if this is a retry from the queue (don't re-queue on failure)
 async function routeThroughOpenClaw(ws, sessionId, text, isRetry = false) {
-  console.log(`🔀 [${sessionId}] Routing through OpenClaw: ${text.slice(0, 50)}...${isRetry ? ' (retry)' : ''}`);
+  log(`🔀 [${sessionId}] Routing through OpenClaw: ${text.slice(0, 50)}...${isRetry ? ' (retry)' : ''}`);
   sendToClient(sessionId, { type: 'thinking' });
   
   // Mark this client as processing - sync will skip assistant msgs for them
@@ -1253,7 +1254,7 @@ async function routeThroughOpenClaw(ws, sessionId, text, isRetry = false) {
       if (!completed) {
         completed = true;
         proc.kill('SIGTERM');
-        console.error(`[${sessionId}] OpenClaw routing timeout after 5 minutes`);
+        logError(`[${sessionId}] OpenClaw routing timeout after 5 minutes`);
         sendToClient(sessionId, { type: 'error', message: 'Request timed out after 5 minutes' });
         sendToClient(sessionId, { type: 'done' });
         // Unmark client as processing
@@ -1274,7 +1275,7 @@ async function routeThroughOpenClaw(ws, sessionId, text, isRetry = false) {
           
           // Check if this is a "connecting" error - queue message for retry
           if (!isRetry && isConnectingError(errorText)) {
-            console.log(`⏳ [${sessionId}] Gateway connecting, queueing message...`);
+            log(`⏳ [${sessionId}] Gateway connecting, queueing message...`);
             setGatewayConnecting(true);
             
             // Notify user their message is queued
@@ -1303,7 +1304,7 @@ async function routeThroughOpenClaw(ws, sessionId, text, isRetry = false) {
         const reply = payloads.map(p => p.text).filter(Boolean).join('\n') || 
                       'Request processed by OpenClaw.';
         
-        console.log(`✅ [${sessionId}] OpenClaw response: ${reply.slice(0, 100)}...`);
+        log(`✅ [${sessionId}] OpenClaw response: ${reply.slice(0, 100)}...`);
         sendToClient(sessionId, { type: 'text', content: reply });
         sendToClient(sessionId, { type: 'done' });
         
@@ -1317,7 +1318,7 @@ async function routeThroughOpenClaw(ws, sessionId, text, isRetry = false) {
         
         resolve(true);
       } catch (e) {
-        console.error(`[${sessionId}] OpenClaw routing error:`, e.message);
+        logError(`[${sessionId}] OpenClaw routing error:`, e.message);
         // If JSON parsing fails, try to extract any useful text
         const errorMsg = e.message.includes('JSON') 
           ? (stderr || stdout || 'Unknown error from OpenClaw').slice(0, 500)
@@ -1336,7 +1337,7 @@ async function routeThroughOpenClaw(ws, sessionId, text, isRetry = false) {
       if (completed) return;
       completed = true;
       
-      console.error(`[${sessionId}] OpenClaw spawn error:`, e.message);
+      logError(`[${sessionId}] OpenClaw spawn error:`, e.message);
       sendToClient(sessionId, { type: 'error', message: `Failed to run OpenClaw: ${e.message}` });
       sendToClient(sessionId, { type: 'done' });
       // Unmark client as processing
@@ -1359,7 +1360,7 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
   const hasImage = !!imageDataUrl;
   const hasFile = !!fileData;
   
-  console.log(`🎤 [${sessionId}] (${mode}) User: ${text.slice(0, 50)}...${hasImage ? ' [+image]' : ''}${hasFile ? ` [+${fileData.filename}]` : ''}`);
+  log(`🎤 [${sessionId}] (${mode}) User: ${text.slice(0, 50)}...${hasImage ? ' [+image]' : ''}${hasFile ? ` [+${fileData.filename}]` : ''}`);
   
   // Build the full message text
   let fullText = text;
@@ -1371,10 +1372,10 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
       let extractedText = '';
       
       if (ext === 'pdf') {
-        console.log(`📄 [${sessionId}] Extracting PDF: ${fileData.filename}`);
+        debug(`📄 [${sessionId}] Extracting PDF: ${fileData.filename}`);
         extractedText = await extractPdfText(fileData.dataUrl);
       } else if (ext === 'docx' || ext === 'doc') {
-        console.log(`📝 [${sessionId}] Extracting DOCX: ${fileData.filename}`);
+        debug(`📝 [${sessionId}] Extracting DOCX: ${fileData.filename}`);
         extractedText = await extractDocxText(fileData.dataUrl);
       }
       
@@ -1385,7 +1386,7 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
       
       fullText = `${text}\n\n[File: ${fileData.filename}]\n\n${extractedText}`;
     } catch (e) {
-      console.error(`[${sessionId}] File extraction error:`, e.message);
+      logError(`[${sessionId}] File extraction error:`, e.message);
       sendToClient(sessionId, { type: 'error', message: `Failed to read file: ${e.message}` });
       sendToClient(sessionId, { type: 'done' });
       return;
@@ -1404,9 +1405,9 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
       writeFileSync(imgPath, Buffer.from(base64Data, 'base64'));
       
       fullText = `[Image attached: ${imgPath}]\n\n${text}`;
-      console.log(`📷 [${sessionId}] Image saved: ${imgPath}`);
+      debug(`📷 [${sessionId}] Image saved: ${imgPath}`);
     } catch (e) {
-      console.error(`[${sessionId}] Image save error:`, e.message);
+      logError(`[${sessionId}] Image save error:`, e.message);
       // Continue without image
     }
   }
@@ -1418,7 +1419,7 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
 
 // Handle voice note (transcribe + summarize)
 async function handleVoiceNote(ws, session, audioBase64, duration) {
-  console.log(`🎙️ [${ws.sessionId}] Voice note: ${duration}s`);
+  log(`🎙️ [${ws.sessionId}] Voice note: ${duration}s`);
   
   ws.send(JSON.stringify({ type: 'thinking' }));
   
@@ -1436,7 +1437,7 @@ async function handleVoiceNote(ws, session, audioBase64, duration) {
     transcription = await transcribeAudio(audioBase64);
     ws.send(JSON.stringify({ type: 'transcription', text: transcription }));
   } catch (e) {
-    console.error('Transcription error:', e.message);
+    logError('Transcription error:', e.message);
     ws.send(JSON.stringify({ type: 'error', message: 'Transcription failed' }));
     ws.send(JSON.stringify({ type: 'done' }));
     return;
@@ -1482,7 +1483,7 @@ async function chat(history, model, mode, hasImage = false) {
   try {
     const jsonBody = JSON.stringify(body);
     const bodySize = Buffer.byteLength(jsonBody);
-    console.log(`📡 Sending request to ${GATEWAY_URL}/v1/chat/completions (${Math.round(bodySize/1024)}KB)`);
+    debug(`📡 Sending request to ${GATEWAY_URL}/v1/chat/completions (${Math.round(bodySize/1024)}KB)`);
     
     const response = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
       method: 'POST',
@@ -1498,7 +1499,7 @@ async function chat(history, model, mode, hasImage = false) {
 
     if (!response.ok) {
       const err = await response.text();
-      console.error('API error:', response.status, err);
+      logError('API error:', response.status, err);
       throw new Error(`API error: ${response.status} - ${err.slice(0, 200)}`);
     }
 
@@ -1507,10 +1508,10 @@ async function chat(history, model, mode, hasImage = false) {
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === 'AbortError') {
-      console.error('Chat request timed out after 5 minutes');
+      logError('Chat request timed out after 5 minutes');
       throw new Error('Request timed out after 5 minutes');
     }
-    console.error('Chat fetch error:', e.message, e.cause || '');
+    logError('Chat fetch error:', e.message, e.cause || '');
     throw new Error(`Chat failed: ${e.message}`);
   }
 }
@@ -1566,7 +1567,7 @@ async function transcribeAudio(audioBase64) {
   
   if (!response.ok) {
     const err = await response.text();
-    console.error('Whisper error:', err);
+    logError('Whisper error:', err);
     throw new Error(`Whisper error: ${response.status}`);
   }
   
@@ -1577,7 +1578,7 @@ async function transcribeAudio(audioBase64) {
 // Start server
 const PORT = config.port || 3456;
 server.listen(PORT, () => {
-  console.log(`
+  log(`
 ╔═══════════════════════════════════════════════════════╗
 ║                    ⚡ SPARK VOICE ⚡                   ║
 ╠═══════════════════════════════════════════════════════╣
