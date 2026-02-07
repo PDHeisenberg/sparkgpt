@@ -1990,7 +1990,8 @@ function handle(data) {
       setStatus('');
       updateSparkPillText();
       fetchActiveSessions(); // Refresh sessions after response
-      checkActiveSubagentSessions(); // Refresh mode button states
+      checkActiveSubagentSessions(); // Refresh mode button states (also saves session state + updates bar)
+      saveSessionState(); // Persist session state (sessions may have completed)
       refreshHistoryCache(); // Keep history cache up to date
       if (mode === 'voice' && !isListening) startVoice();
       break;
@@ -2341,6 +2342,10 @@ async function checkActiveSubagentSessions() {
     
     // Update button visual states
     updateSubagentButtonStates();
+    
+    // Save session state to localStorage and update active sessions bar
+    saveSessionState();
+    updateActiveSessionsBar();
   } catch (e) {
     console.error('Failed to check active sessions:', e);
   }
@@ -2427,6 +2432,136 @@ const SESSION_MODE_CONFIG = {
   }
 };
 
+// ============================================================================
+// SESSION PERSISTENCE via localStorage
+// ============================================================================
+
+// Save session state when it changes
+function saveSessionState() {
+  const state = {};
+  for (const [mode, config] of Object.entries(SESSION_MODE_CONFIG)) {
+    const label = config.sessionKey;
+    if (activeSubagentSessions[label]) {
+      state[mode] = {
+        label,
+        lastActive: Date.now(),
+        hasHistory: true
+      };
+    }
+  }
+  localStorage.setItem('sparkgpt-active-sessions', JSON.stringify(state));
+}
+
+// Restore session state on page load
+function restoreSessionState() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
+    // Remove stale entries (older than 24 hours)
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    for (const [mode, data] of Object.entries(stored)) {
+      if (data.lastActive < cutoff) {
+        delete stored[mode];
+      }
+    }
+    localStorage.setItem('sparkgpt-active-sessions', JSON.stringify(stored));
+    return stored;
+  } catch {
+    return {};
+  }
+}
+
+// ============================================================================
+// ACTIVE SESSIONS BAR on intro page
+// ============================================================================
+
+function updateActiveSessionsBar() {
+  const bar = document.getElementById('active-sessions-bar');
+  const pillsContainer = document.getElementById('active-sessions-pills');
+  if (!bar || !pillsContainer) return;
+  
+  const activeModes = [];
+  for (const [mode, config] of Object.entries(SESSION_MODE_CONFIG)) {
+    const session = getActiveSession(mode);
+    if (session) {
+      activeModes.push({ mode, config, session });
+    }
+  }
+  
+  // Also check localStorage for recently active sessions
+  const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
+  for (const [mode, config] of Object.entries(SESSION_MODE_CONFIG)) {
+    if (!activeModes.find(a => a.mode === mode) && stored[mode]) {
+      // Session was active recently but not in current poll — show as "resumable"
+      activeModes.push({ mode, config, session: stored[mode], resumable: true });
+    }
+  }
+  
+  if (activeModes.length === 0) {
+    bar.style.display = 'none';
+    return;
+  }
+  
+  bar.style.display = 'block';
+  pillsContainer.innerHTML = activeModes.map(({ mode, config, resumable }) => `
+    <button class="session-pill ${resumable ? 'resumable' : 'active'}" data-session-mode="${mode}">
+      <span class="session-pill-icon">${config.icon}</span>
+      <span class="session-pill-name">${config.name}</span>
+      <span class="session-pill-status">${resumable ? '⏸' : '●'}</span>
+    </button>
+  `).join('');
+  
+  // Attach click handlers
+  pillsContainer.querySelectorAll('.session-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const modeKey = pill.dataset.sessionMode;
+      if (modeKey) showSessionPage(modeKey);
+    });
+  });
+}
+
+// ============================================================================
+// SESSION STATUS POLLING on session page
+// ============================================================================
+
+let sessionStatusInterval = null;
+
+// Start polling when session page opens
+function startSessionStatusPolling() {
+  stopSessionStatusPolling(); // Clear any existing
+  
+  sessionStatusInterval = setInterval(async () => {
+    if (!currentSessionMode) return;
+    
+    try {
+      const res = await fetch('/api/mode-sessions');
+      const data = await res.json();
+      const sessions = data.sessions || data;
+      const modeData = sessions[currentSessionMode];
+      
+      if (modeData) {
+        if (modeData.active) {
+          sessionStatus.textContent = '● Running';
+          sessionStatus.classList.add('active');
+          sessionStatus.classList.remove('completed');
+        } else if (modeData.exists) {
+          sessionStatus.textContent = '● Idle';
+          sessionStatus.classList.remove('active');
+          sessionStatus.classList.add('completed');
+        }
+      }
+    } catch (e) {
+      console.error('Session status poll failed:', e);
+    }
+  }, 15000); // Every 15 seconds
+}
+
+function stopSessionStatusPolling() {
+  if (sessionStatusInterval) {
+    clearInterval(sessionStatusInterval);
+    sessionStatusInterval = null;
+  }
+}
+
 // Show session page for a specific mode
 async function showSessionPage(mode) {
   const config = SESSION_MODE_CONFIG[mode];
@@ -2461,6 +2596,9 @@ async function showSessionPage(mode) {
   // Load session history
   await loadSessionHistory(mode, config);
   
+  // Start status polling
+  startSessionStatusPolling();
+  
   // Focus input
   setTimeout(() => sessionInput.focus(), 100);
 }
@@ -2470,6 +2608,7 @@ function hideSessionPage() {
   sessionPage.classList.remove('show');
   currentSessionMode = null;
   sessionPageProcessing = false;
+  stopSessionStatusPolling();
 }
 
 // Load session history from API
@@ -2619,9 +2758,15 @@ sessionSendBtn?.addEventListener('click', sendSessionMessage);
 
 sessionBackBtn?.addEventListener('click', hideSessionPage);
 
+// Restore session state from localStorage on load
+restoreSessionState();
+
 // Check on load and every 10 seconds
 checkActiveSubagentSessions();
 let subagentPollInterval = setInterval(checkActiveSubagentSessions, 10000);
+
+// Update active sessions bar on load (will also be called by checkActiveSubagentSessions)
+updateActiveSessionsBar();
 
 // Pause polling when page is hidden
 document.addEventListener('visibilitychange', () => {

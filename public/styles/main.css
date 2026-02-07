@@ -1979,3 +1979,272 @@
       stroke-width: 2;
       fill: none;
     }
+
+    /* ============================================================================
+       SESSION PAGE - Full-screen mode session interface
+       ============================================================================ */
+    
+    .session-page {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 60;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    
+    .session-page.show {
+      transform: translateX(0);
+    }
+    
+    .session-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px;
+      padding-top: calc(16px + env(safe-area-inset-top, 0px));
+      border-bottom: 1px solid var(--glass-border);
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    
+    .session-back-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--input-bg);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    
+    .session-back-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+    
+    .session-back-btn:active {
+      transform: scale(0.95);
+    }
+    
+    .session-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+    
+    .session-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+    }
+    
+    .session-status {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-tertiary);
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: var(--input-bg);
+    }
+    
+    .session-status.active {
+      color: var(--green);
+      background: rgba(52, 199, 89, 0.1);
+    }
+    
+    .session-status.completed {
+      color: #94a3b8;
+    }
+    
+    .session-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      padding-bottom: 100px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+    
+    .session-messages .msg {
+      animation: msgIn 0.3s ease-out;
+    }
+    
+    .session-empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 60px 20px;
+      gap: 12px;
+      opacity: 0.6;
+    }
+    
+    .session-empty-icon {
+      font-size: 48px;
+    }
+    
+    .session-empty-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    
+    .session-empty-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      max-width: 260px;
+    }
+    
+    .session-input-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 8px));
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--glass-border);
+      z-index: 61;
+    }
+    
+    .session-input {
+      flex: 1;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 22px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-size: 16px;
+      font-family: inherit;
+      resize: none;
+      min-height: 44px;
+      max-height: 120px;
+      overflow-y: auto;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    
+    .session-input:focus {
+      border-color: var(--accent);
+    }
+    
+    .session-input::placeholder {
+      color: var(--text-tertiary);
+    }
+    
+    .session-send-btn {
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      border-radius: 50%;
+      border: none;
+      background: var(--input-bg);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.4;
+      transition: all 0.2s;
+    }
+    
+    .session-send-btn.active {
+      opacity: 1;
+      background: var(--accent);
+    }
+    
+    .session-send-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+    
+    .session-send-btn.active svg {
+      stroke: white;
+    }
+
+    /* ============================================================================
+       ACTIVE SESSIONS BAR - Pills on intro page
+       ============================================================================ */
+    
+    .active-sessions-bar {
+      padding: 4px 0;
+      margin-top: 4px;
+    }
+    
+    .active-sessions-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding-left: 4px;
+      margin-bottom: 8px;
+    }
+    
+    .active-sessions-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    .session-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--glass-border);
+      background: var(--glass);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.85em;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    
+    .session-pill:hover {
+      background: var(--shortcut-bg);
+      border-color: var(--accent);
+    }
+    
+    .session-pill:active {
+      transform: scale(0.96);
+    }
+    
+    .session-pill.active .session-pill-status {
+      color: var(--green);
+      animation: session-pulse 2s infinite;
+    }
+    
+    .session-pill.resumable {
+      opacity: 0.7;
+    }
+    
+    .session-pill.resumable .session-pill-status {
+      color: #fbbf24;
+    }
+    
+    @keyframes session-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
