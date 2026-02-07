@@ -421,7 +421,7 @@ app.get('/api/messages/recent', async (req, res) => {
 });
 
 // Node status endpoint - check if PC is connected
-const CLAWDBOT_PATH = '/home/heisenberg/.npm-global/bin/clawdbot';
+const OPENCLAW_PATH = '/home/heisenberg/.npm-global/bin/openclaw';
 
 // Wake-on-LAN config
 const PC_MAC_ADDRESS = '8C:86:DD:61:3D:16';
@@ -479,8 +479,8 @@ app.post('/api/nodes/wake', async (req, res) => {
 
 app.get('/api/nodes/status', async (req, res) => {
   try {
-    // Use clawdbot CLI to get node status
-    const output = execSync(`${CLAWDBOT_PATH} nodes status --json`, { 
+    // Use openclaw CLI to get node status
+    const output = execSync(`${OPENCLAW_PATH} nodes status --json`, { 
       encoding: 'utf8',
       timeout: 5000 
     });
@@ -502,11 +502,11 @@ app.get('/api/nodes/status', async (req, res) => {
   }
 });
 
-// Active sessions from Clawdbot gateway (running agents)
+// Active sessions from OpenClaw gateway (running agents)
 app.get('/api/active-sessions', async (req, res) => {
   try {
     // Use CLI to get sessions (more reliable than HTTP API)
-    const output = execSync(`${CLAWDBOT_PATH} sessions list --json --limit 20`, {
+    const output = execSync(`${OPENCLAW_PATH} sessions list --json --limit 20`, {
       encoding: 'utf8',
       timeout: 5000
     });
@@ -1175,11 +1175,11 @@ async function extractDocxText(dataUrl) {
   return result.value;
 }
 
-// Route special commands through Clawdbot's main session (for tools/skills)
+// Route messages through OpenClaw's main session (for tools/skills)
 // Uses the CLI for reliable agent execution with full tool access
 // isRetry: true if this is a retry from the queue (don't re-queue on failure)
-async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
-  console.log(`🔀 [${sessionId}] Routing through Clawdbot: ${text.slice(0, 50)}...${isRetry ? ' (retry)' : ''}`);
+async function routeThroughOpenClaw(ws, sessionId, text, isRetry = false) {
+  console.log(`🔀 [${sessionId}] Routing through OpenClaw: ${text.slice(0, 50)}...${isRetry ? ' (retry)' : ''}`);
   sendToClient(sessionId, { type: 'thinking' });
   
   // Mark this client as processing - sync will skip assistant msgs for them
@@ -1191,8 +1191,8 @@ async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
     let stderr = '';
     let completed = false;
     
-    // Use clawdbot agent CLI to route to main session
-    const proc = spawn(CLAWDBOT_PATH, [
+    // Use openclaw agent CLI to route to main session
+    const proc = spawn(OPENCLAW_PATH, [
       'agent',
       '--message', text,
       '--to', '+6587588470', // Parth's number - routes to main session
@@ -1214,7 +1214,7 @@ async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
       if (!completed) {
         completed = true;
         proc.kill('SIGTERM');
-        console.error(`[${sessionId}] Clawdbot routing timeout after 5 minutes`);
+        console.error(`[${sessionId}] OpenClaw routing timeout after 5 minutes`);
         sendToClient(sessionId, { type: 'error', message: 'Request timed out after 5 minutes' });
         sendToClient(sessionId, { type: 'done' });
         // Unmark client as processing
@@ -1262,9 +1262,9 @@ async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
         const result = JSON.parse(stdout);
         const payloads = result.result?.payloads || [];
         const reply = payloads.map(p => p.text).filter(Boolean).join('\n') || 
-                      'Request processed by Clawdbot.';
+                      'Request processed by OpenClaw.';
         
-        console.log(`✅ [${sessionId}] Clawdbot response: ${reply.slice(0, 100)}...`);
+        console.log(`✅ [${sessionId}] OpenClaw response: ${reply.slice(0, 100)}...`);
         sendToClient(sessionId, { type: 'text', content: reply });
         sendToClient(sessionId, { type: 'done' });
         
@@ -1278,10 +1278,10 @@ async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
         
         resolve(true);
       } catch (e) {
-        console.error(`[${sessionId}] Clawdbot routing error:`, e.message);
+        console.error(`[${sessionId}] OpenClaw routing error:`, e.message);
         // If JSON parsing fails, try to extract any useful text
         const errorMsg = e.message.includes('JSON') 
-          ? (stderr || stdout || 'Unknown error from Clawdbot').slice(0, 500)
+          ? (stderr || stdout || 'Unknown error from OpenClaw').slice(0, 500)
           : e.message;
         sendToClient(sessionId, { type: 'error', message: errorMsg });
         sendToClient(sessionId, { type: 'done' });
@@ -1297,8 +1297,8 @@ async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
       if (completed) return;
       completed = true;
       
-      console.error(`[${sessionId}] Clawdbot spawn error:`, e.message);
-      sendToClient(sessionId, { type: 'error', message: `Failed to run Clawdbot: ${e.message}` });
+      console.error(`[${sessionId}] OpenClaw spawn error:`, e.message);
+      sendToClient(sessionId, { type: 'error', message: `Failed to run OpenClaw: ${e.message}` });
       sendToClient(sessionId, { type: 'done' });
       // Unmark client as processing
       const sessionSpawn = sessions.get(sessionId);
@@ -1309,10 +1309,10 @@ async function routeThroughClawdbot(ws, sessionId, text, isRetry = false) {
 }
 
 // Set up gateway queue callbacks now that functions are defined
-setQueueCallbacks(routeThroughClawdbot, sendToClient);
+setQueueCallbacks(routeThroughOpenClaw, sendToClient);
 
 // Handle text/voice transcript (with optional image or file)
-// ALL messages route through Clawdbot main session for unified experience
+// ALL messages route through OpenClaw main session for unified experience
 async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData) {
   if (!text?.trim()) return;
   
@@ -1372,9 +1372,9 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
     }
   }
   
-  // Route ALL messages through Clawdbot main session
+  // Route ALL messages through OpenClaw main session
   // This ensures same session, same tools, same memory as WhatsApp
-  await routeThroughClawdbot(ws, sessionId, fullText);
+  await routeThroughOpenClaw(ws, sessionId, fullText);
 }
 
 // Legacy handler kept for reference - no longer used
