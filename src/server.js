@@ -62,6 +62,7 @@ import {
   MAX_FILE_TEXT_CLI,
 } from './constants.js';
 import { log, debug, warn, error as logError } from './logger.js';
+import { routeModeMessage, getModeHistory, getActiveModeSessions } from './mode-sessions.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
@@ -549,6 +550,43 @@ app.get('/api/active-sessions', async (req, res) => {
   } catch (e) {
     logError('Active sessions error:', e.message);
     res.json({ count: 0, thinking: false, sessions: [], error: e.message });
+  }
+});
+
+// Mode session history endpoint
+app.get('/api/modes/:mode/history', (req, res) => {
+  try {
+    const mode = req.params.mode;
+    const limit = parseInt(req.query.limit) || 50;
+    const messages = getModeHistory(mode, limit);
+    res.json({ mode, messages });
+  } catch (e) {
+    logError('Mode history error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Mode configs endpoint (used by frontend to load available modes)
+app.get('/api/modes', (req, res) => {
+  const modes = {
+    dev: { name: 'Dev Mode', icon: '👨‍💻', notifyWhatsApp: true },
+    research: { name: 'Research Mode', icon: '🔬', notifyWhatsApp: true },
+    plan: { name: 'Plan Mode', icon: '📋', notifyWhatsApp: true },
+    articulate: { name: 'Articulate Mode', icon: '✍️', notifyWhatsApp: false },
+    dailyreports: { name: 'Daily Reports', icon: '📊', notifyWhatsApp: true },
+    videogen: { name: 'Video Gen', icon: '🎬', notifyWhatsApp: true }
+  };
+  res.json({ modes });
+});
+
+// Active mode sessions endpoint
+app.get('/api/mode-sessions', (req, res) => {
+  try {
+    const sessions = getActiveModeSessions();
+    res.json({ sessions });
+  } catch (e) {
+    logError('Mode sessions error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -1146,7 +1184,7 @@ wss.on('connection', (ws, request) => {
       const msg = JSON.parse(data.toString());
 
       // Validate message type
-      const VALID_WS_TYPES = ['transcript', 'voice_note'];
+      const VALID_WS_TYPES = ['transcript', 'voice_note', 'mode_message', 'mode_history'];
       if (!msg.type || !VALID_WS_TYPES.includes(msg.type)) {
         warn(`[${sessionId}] Invalid message type: ${msg.type}`);
         ws.send(JSON.stringify({ type: 'error', message: `Invalid message type: ${msg.type}` }));
@@ -1161,6 +1199,30 @@ wss.on('connection', (ws, request) => {
 
       if (msg.type === 'voice_note' && (!msg.audio || typeof msg.audio !== 'string')) {
         ws.send(JSON.stringify({ type: 'error', message: 'Missing audio data for voice note' }));
+        return;
+      }
+
+      // Handle mode_message: route to isolated mode session
+      if (msg.type === 'mode_message') {
+        const { sparkMode, text } = msg;
+        if (!sparkMode || !text?.trim()) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Missing sparkMode or text for mode_message' }));
+          return;
+        }
+        log(`📦 [${sessionId}] Mode message: ${sparkMode} - ${text.slice(0, 50)}...`);
+        await routeModeMessage(ws, sessionId, sparkMode, text, sendToClient);
+        return;
+      }
+
+      // Handle mode_history: return history for a mode session
+      if (msg.type === 'mode_history') {
+        const { sparkMode } = msg;
+        if (!sparkMode) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Missing sparkMode for mode_history' }));
+          return;
+        }
+        const messages = getModeHistory(sparkMode);
+        ws.send(JSON.stringify({ type: 'mode_history', mode: sparkMode, messages }));
         return;
       }
 

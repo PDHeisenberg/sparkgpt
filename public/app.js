@@ -2812,8 +2812,19 @@ document.getElementById('devteam-btn')?.addEventListener('click', () => {
     placeholder: 'Describe the task or issue to fix...',
     submitText: 'Start Dev Session',
     activeSession,
-    onViewSession: viewActiveSession,
-    onSubmit: (text) => send(`/dev ${text}`, 'chat')
+    onViewSession: (session) => showSessionPage('dev'),
+    onSubmit: (text) => {
+      showSessionPage('dev');
+      // Slight delay to let session page render, then send
+      setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          // Add user message to session UI
+          addSessionMessage('user', text);
+          showSessionThinking();
+          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'dev', text }));
+        }
+      }, 150);
+    }
   });
 });
 
@@ -2827,8 +2838,17 @@ document.getElementById('researcher-btn')?.addEventListener('click', () => {
     placeholder: 'What topic do you want to research?',
     submitText: 'Start Research',
     activeSession,
-    onViewSession: viewActiveSession,
-    onSubmit: (text) => send(`/research ${text}`, 'chat')
+    onViewSession: (session) => showSessionPage('research'),
+    onSubmit: (text) => {
+      showSessionPage('research');
+      setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          addSessionMessage('user', text);
+          showSessionThinking();
+          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'research', text }));
+        }
+      }, 150);
+    }
   });
 });
 
@@ -2842,8 +2862,17 @@ document.getElementById('plan-btn')?.addEventListener('click', () => {
     placeholder: 'What do you want to plan?',
     submitText: 'Start Planning',
     activeSession,
-    onViewSession: viewActiveSession,
-    onSubmit: (text) => send(`/plan ${text}`, 'chat')
+    onViewSession: (session) => showSessionPage('plan'),
+    onSubmit: (text) => {
+      showSessionPage('plan');
+      setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          addSessionMessage('user', text);
+          showSessionThinking();
+          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'plan', text }));
+        }
+      }, 150);
+    }
   });
 });
 
