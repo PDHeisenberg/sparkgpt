@@ -651,7 +651,27 @@
 
     .shortcut.session-active {
       border-color: #22c55e;
-      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.3), 0 2px 8px var(--glass-shadow);
+      background: rgba(34, 197, 94, 0.06);
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25), 0 0 12px rgba(34, 197, 94, 0.1), 0 2px 8px var(--glass-shadow);
+      position: relative;
+    }
+
+    .shortcut.session-active::after {
+      content: '';
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+      animation: session-dot-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes session-dot-pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(34, 197, 94, 0.6); }
+      50% { opacity: 0.5; box-shadow: 0 0 10px rgba(34, 197, 94, 0.8); }
     }
 
     .shortcut.session-active .shortcut-icon {
@@ -660,6 +680,7 @@
 
     .shortcut.session-active .shortcut-sub {
       color: #22c55e;
+      font-weight: 500;
     }
 
     .shortcut .shortcut-icon {
@@ -2183,68 +2204,32 @@
     }
 
     /* ============================================================================
-       ACTIVE SESSIONS BAR - Pills on intro page
+       NEW SESSION BUTTON - in session page header
        ============================================================================ */
     
-    .active-sessions-bar {
-      padding: 4px 0;
-      margin-top: 4px;
-    }
-    
-    .active-sessions-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-tertiary);
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      padding-left: 4px;
-      margin-bottom: 8px;
-    }
-    
-    .active-sessions-pills {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    
-    .session-pill {
+    .session-new-btn {
+      width: 36px;
+      height: 36px;
+      min-width: 36px;
+      border-radius: 50%;
+      border: 1px solid var(--glass-border);
+      background: var(--input-bg);
+      cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
-      border-radius: 20px;
-      border: 1px solid var(--glass-border);
-      background: var(--glass);
-      color: var(--text);
-      cursor: pointer;
-      font-size: 0.85em;
-      font-family: inherit;
+      justify-content: center;
+      flex-shrink: 0;
       transition: all 0.2s;
+      color: var(--text-secondary);
+      margin-left: auto;
     }
     
-    .session-pill:hover {
+    .session-new-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+    
+    .session-new-btn:active {
+      transform: scale(0.92);
       background: var(--shortcut-bg);
-      border-color: var(--accent);
-    }
-    
-    .session-pill:active {
-      transform: scale(0.96);
-    }
-    
-    .session-pill.active .session-pill-status {
-      color: var(--green);
-      animation: session-pulse 2s infinite;
-    }
-    
-    .session-pill.resumable {
-      opacity: 0.7;
-    }
-    
-    .session-pill.resumable .session-pill-status {
-      color: #fbbf24;
-    }
-    
-    @keyframes session-pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
     }

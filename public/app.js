@@ -2343,9 +2343,8 @@ async function checkActiveSubagentSessions() {
     // Update button visual states
     updateSubagentButtonStates();
     
-    // Save session state to localStorage and update active sessions bar
+    // Save session state to localStorage
     saveSessionState();
-    updateActiveSessionsBar();
   } catch (e) {
     console.error('Failed to check active sessions:', e);
   }
@@ -2470,54 +2469,7 @@ function restoreSessionState() {
   }
 }
 
-// ============================================================================
-// ACTIVE SESSIONS BAR on intro page
-// ============================================================================
-
-function updateActiveSessionsBar() {
-  const bar = document.getElementById('active-sessions-bar');
-  const pillsContainer = document.getElementById('active-sessions-pills');
-  if (!bar || !pillsContainer) return;
-  
-  const activeModes = [];
-  for (const [mode, config] of Object.entries(SESSION_MODE_CONFIG)) {
-    const session = getActiveSession(mode);
-    if (session) {
-      activeModes.push({ mode, config, session });
-    }
-  }
-  
-  // Also check localStorage for recently active sessions
-  const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
-  for (const [mode, config] of Object.entries(SESSION_MODE_CONFIG)) {
-    if (!activeModes.find(a => a.mode === mode) && stored[mode]) {
-      // Session was active recently but not in current poll — show as "resumable"
-      activeModes.push({ mode, config, session: stored[mode], resumable: true });
-    }
-  }
-  
-  if (activeModes.length === 0) {
-    bar.style.display = 'none';
-    return;
-  }
-  
-  bar.style.display = 'block';
-  pillsContainer.innerHTML = activeModes.map(({ mode, config, resumable }) => `
-    <button class="session-pill ${resumable ? 'resumable' : 'active'}" data-session-mode="${mode}">
-      <span class="session-pill-icon">${config.icon}</span>
-      <span class="session-pill-name">${config.name}</span>
-      <span class="session-pill-status">${resumable ? '⏸' : '●'}</span>
-    </button>
-  `).join('');
-  
-  // Attach click handlers
-  pillsContainer.querySelectorAll('.session-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      const modeKey = pill.dataset.sessionMode;
-      if (modeKey) showSessionPage(modeKey);
-    });
-  });
-}
+// (Active Sessions Bar removed — mode buttons are now session-aware)
 
 // ============================================================================
 // SESSION STATUS POLLING on session page
@@ -2758,6 +2710,32 @@ sessionSendBtn?.addEventListener('click', sendSessionMessage);
 
 sessionBackBtn?.addEventListener('click', hideSessionPage);
 
+// New Session button — clears session display for a fresh start
+document.getElementById('session-new-btn')?.addEventListener('click', () => {
+  if (!currentSessionMode) return;
+  // Confirm if there's existing content
+  const hasMessages = sessionMessagesEl.querySelectorAll('.msg').length > 0;
+  if (hasMessages && !confirm('Start a new session? Current session will be cleared.')) return;
+  
+  // Clear the session messages display
+  sessionMessagesEl.innerHTML = '';
+  
+  // Show empty state for the current mode
+  const config = SESSION_MODE_CONFIG[currentSessionMode];
+  if (config) {
+    sessionMessagesEl.innerHTML = `
+      <div class="session-empty-state">
+        <div class="session-empty-icon">${config.icon}</div>
+        <div class="session-empty-title">${config.emptyTitle}</div>
+        <div class="session-empty-desc">${config.emptyDesc}</div>
+      </div>
+    `;
+  }
+  
+  // Focus input
+  sessionInput?.focus();
+});
+
 // Restore session state from localStorage on load
 restoreSessionState();
 
@@ -2765,8 +2743,7 @@ restoreSessionState();
 checkActiveSubagentSessions();
 let subagentPollInterval = setInterval(checkActiveSubagentSessions, 10000);
 
-// Update active sessions bar on load (will also be called by checkActiveSubagentSessions)
-updateActiveSessionsBar();
+// (Active sessions bar removed — mode buttons handle session state directly)
 
 // Pause polling when page is hidden
 document.addEventListener('visibilitychange', () => {
@@ -2987,78 +2964,85 @@ function viewActiveSession(session) {
   send(`Show me the recent activity from the ${session.label || 'subagent'} session (key: ${session.key})`, 'chat');
 }
 
-// Dev Mode button - navigate to session page
+// Dev Mode button - session-aware: go to session if active, else open bottom sheet
 document.getElementById('devteam-btn')?.addEventListener('click', () => {
-  const activeSession = getActiveSession('spark-dev-mode');
-  createBottomSheet({
-    icon: '👨‍💻',
-    title: 'Dev Mode',
-    subtitle: activeSession ? '● Session active' : 'Senior engineer — reads code, writes tests, commits',
-    placeholder: 'Describe the task or issue to fix...',
-    submitText: 'Start Dev Session',
-    activeSession,
-    onViewSession: (session) => showSessionPage('dev'),
-    onSubmit: (text) => {
-      showSessionPage('dev');
-      // Slight delay to let session page render, then send
-      setTimeout(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          // Add user message to session UI
-          addSessionMessage('user', text);
-          showSessionThinking();
-          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'dev', text }));
-        }
-      }, 150);
-    }
-  });
+  const activeSession = getActiveSession('dev');
+  const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
+  if (activeSession || activeSubagentSessions['spark-dev-mode'] || stored['dev']) {
+    showSessionPage('dev');
+  } else {
+    createBottomSheet({
+      icon: '👨‍💻',
+      title: 'Dev Mode',
+      subtitle: 'Senior engineer — reads code, writes tests, commits',
+      placeholder: 'Describe the task or issue to fix...',
+      submitText: 'Start Dev Session',
+      onSubmit: (text) => {
+        showSessionPage('dev');
+        setTimeout(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            addSessionMessage('user', text);
+            showSessionThinking();
+            ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'dev', text }));
+          }
+        }, 150);
+      }
+    });
+  }
 });
 
-// Research Mode button - popup modal
+// Research Mode button - session-aware: go to session if active, else open bottom sheet
 document.getElementById('researcher-btn')?.addEventListener('click', () => {
-  const activeSession = getActiveSession('spark-research-mode');
-  createBottomSheet({
-    icon: '🔬',
-    title: 'Research Mode',
-    subtitle: activeSession ? '● Session active' : 'Deep research with sources and analysis',
-    placeholder: 'What topic do you want to research?',
-    submitText: 'Start Research',
-    activeSession,
-    onViewSession: (session) => showSessionPage('research'),
-    onSubmit: (text) => {
-      showSessionPage('research');
-      setTimeout(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          addSessionMessage('user', text);
-          showSessionThinking();
-          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'research', text }));
-        }
-      }, 150);
-    }
-  });
+  const activeSession = getActiveSession('research');
+  const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
+  if (activeSession || activeSubagentSessions['spark-research-mode'] || stored['research']) {
+    showSessionPage('research');
+  } else {
+    createBottomSheet({
+      icon: '🔬',
+      title: 'Research Mode',
+      subtitle: 'Deep research with sources and analysis',
+      placeholder: 'What topic do you want to research?',
+      submitText: 'Start Research',
+      onSubmit: (text) => {
+        showSessionPage('research');
+        setTimeout(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            addSessionMessage('user', text);
+            showSessionThinking();
+            ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'research', text }));
+          }
+        }, 150);
+      }
+    });
+  }
 });
 
-// Plan Mode button - popup modal
+// Plan Mode button - session-aware: go to session if active, else open bottom sheet
 document.getElementById('plan-btn')?.addEventListener('click', () => {
-  const activeSession = getActiveSession('spark-plan-mode');
-  createBottomSheet({
-    icon: '📋',
-    title: 'Plan Mode',
-    subtitle: activeSession ? '● Session active' : 'Technical specs with phases and risks',
-    placeholder: 'What do you want to plan?',
-    submitText: 'Start Planning',
-    activeSession,
-    onViewSession: (session) => showSessionPage('plan'),
-    onSubmit: (text) => {
-      showSessionPage('plan');
-      setTimeout(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          addSessionMessage('user', text);
-          showSessionThinking();
-          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'plan', text }));
-        }
-      }, 150);
-    }
-  });
+  const activeSession = getActiveSession('plan');
+  const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
+  if (activeSession || activeSubagentSessions['spark-plan-mode'] || stored['plan']) {
+    showSessionPage('plan');
+  } else {
+    createBottomSheet({
+      icon: '📋',
+      title: 'Plan Mode',
+      subtitle: 'Technical specs with phases and risks',
+      placeholder: 'What do you want to plan?',
+      submitText: 'Start Planning',
+      onSubmit: (text) => {
+        showSessionPage('plan');
+        setTimeout(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            addSessionMessage('user', text);
+            showSessionThinking();
+            ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'plan', text }));
+          }
+        }, 150);
+      }
+    });
+  }
 });
 
 // Video Gen button - show modal with 3 variants
