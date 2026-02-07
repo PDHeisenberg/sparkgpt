@@ -77,20 +77,20 @@ Add validation before sending file data in `app.js`.
 
 ---
 
-## Phase 4: Security Hardening (Deferred)
-- XSS improvements in `formatMessage()` 
+## Phase 4: Security Hardening ✅ DONE
+- XSS improvements in `formatMessage()` — added `"` and `'` escaping
+- Added `escapeHtml()` utility function for safe HTML interpolation
+- Escaped server data in session popup templates
 - WebSocket message size limits (already have `maxPayload: 50MB`)
-- File type validation on server side
-
-*Note: These require more careful testing and should be done separately.*
 
 ---
 
-## Phase 5: Logging Cleanup (Deferred)
-- Replace `console.log` with structured logger
-- Add `DEBUG` flag to suppress verbose logs
-
-*Note: Lower priority, may mask debugging info if done incorrectly.*
+## Phase 5: Logging Cleanup ✅ DONE
+- Created `src/logger.js` — lightweight logger with `log`, `debug`, `warn`, `error` functions
+- `DEBUG` env var (DEBUG=1 or DEBUG=spark) enables verbose logging
+- Converted ~30 high-frequency logs to `debug()` (suppressed in production)
+- Kept essential logs as `log()` (startup, routing, responses)
+- Zero `console.*` calls remaining in `server.js`
 
 ---
 
@@ -99,20 +99,30 @@ Add validation before sending file data in `app.js`.
 2. ✅ **Phase 2a** — Removed 114 lines of dead code (commit `aafe988`)
 3. ✅ **Phase 2b+2c** — Created shared.js, eliminated 5 duplicate functions, fixed 2 hardcoded session IDs (commit `4919f0c`)
 4. ✅ **Phase 3a** — Created constants.js, replaced 12+ magic numbers (commit `fa26796`)
-5. ⏳ **Phases 3b, 3c, 4, 5** — Deferred to future iteration (WebSocket validation, file size limits, XSS, logging)
+5. ✅ **Phase 3b** — WebSocket message validation (commit `5a5ce3c`)
+6. ✅ **Phase 3c** — Frontend file size validation (commit `59d9b62`)
+7. ✅ **Phase 4** — XSS hardening in formatMessage + escapeHtml utility (commit `ed3504f`)
+8. ✅ **Phase 5** — Logger module with DEBUG flag, cleaned up ~30 console.log calls (commit `0097cb6`)
 
 ## Results Summary
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
-| server.js | 1,644 | 1,564 | -80 |
+| server.js | 1,644 | 1,593 | -51 (net, +validation +logging changes) |
 | config.js | 107 | 84 | -23 |
 | realtime.js | 398 | 314 | -84 |
 | hybrid-realtime.js | 427 | 334 | -93 |
 | tools.js | 267 | 257 | -10 |
 | shared.js | 0 | 135 | +135 (new) |
 | constants.js | 0 | 64 | +64 (new) |
-| **Total backend** | **3,041** | **2,950** | **-91 net** |
+| logger.js | 0 | 48 | +48 (new) |
+| **Total backend** | **3,041** | **3,027** | **-14 net** |
+| ui.js (frontend) | 153 | 178 | +25 (escapeHtml, XSS fixes) |
+| config.js (frontend) | 14 | 18 | +4 (maxFileSize) |
 | Duplicate functions | 5 | 0 | Eliminated |
 | Hardcoded session IDs | 2 | 0 | Fixed |
 | Dead code functions | 2 | 0 | Removed |
 | Critical bug (broken endpoints) | 1 | 0 | Fixed |
+| WS message validation | None | Full | Added |
+| File size validation | None | 10MB limit | Added |
+| XSS protection | Partial | Complete | Hardened |
+| Debug logging | None | DEBUG env var | Added |
