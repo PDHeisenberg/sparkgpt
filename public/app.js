@@ -2808,7 +2808,7 @@ document.getElementById('devteam-btn')?.addEventListener('click', () => {
   createBottomSheet({
     icon: '👨‍💻',
     title: 'Dev Mode',
-    subtitle: activeSession ? '● Session active' : 'Isolated coding session',
+    subtitle: activeSession ? '● Session active' : 'Senior engineer — reads code, writes tests, commits',
     placeholder: 'Describe the task or issue to fix...',
     submitText: 'Start Dev Session',
     activeSession,
@@ -2834,7 +2834,7 @@ document.getElementById('researcher-btn')?.addEventListener('click', () => {
   createBottomSheet({
     icon: '🔬',
     title: 'Research Mode',
-    subtitle: activeSession ? '● Session active' : 'Deep dive research',
+    subtitle: activeSession ? '● Session active' : 'Deep research with sources and analysis',
     placeholder: 'What topic do you want to research?',
     submitText: 'Start Research',
     activeSession,
@@ -2858,7 +2858,7 @@ document.getElementById('plan-btn')?.addEventListener('click', () => {
   createBottomSheet({
     icon: '📋',
     title: 'Plan Mode',
-    subtitle: activeSession ? '● Session active' : 'Create detailed specs',
+    subtitle: activeSession ? '● Session active' : 'Technical specs with phases and risks',
     placeholder: 'What do you want to plan?',
     submitText: 'Start Planning',
     activeSession,
