@@ -7,95 +7,11 @@
  */
 
 import WebSocket from 'ws';
-import { readFileSync, existsSync, appendFileSync } from 'fs';
-import { join } from 'path';
 import { TOOL_DEFINITIONS, executeTool } from './tools.js';
+import { getOpenAIKey, loadConversationContext, appendToSession } from './services/shared.js';
 
 // OpenAI Realtime API endpoint
 const REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
-
-// Session config
-const SESSIONS_DIR = '/home/heisenberg/.clawdbot/agents/main/sessions';
-const MAIN_SESSION_ID = 'd0bddcfd-ba66-479f-8f30-5cc187be5e61';
-const MAIN_SESSION_PATH = join(SESSIONS_DIR, `${MAIN_SESSION_ID}.jsonl`);
-
-// Get OpenAI API key
-function getOpenAIKey() {
-  const configPath = '/home/heisenberg/.clawdbot/clawdbot.json';
-  if (existsSync(configPath)) {
-    const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
-    return cfg.skills?.entries?.['openai-whisper-api']?.apiKey;
-  }
-  return null;
-}
-
-// Load recent conversation context for system prompt
-function loadConversationContext(limit = 5) {
-  try {
-    if (!existsSync(MAIN_SESSION_PATH)) return '';
-    
-    const content = readFileSync(MAIN_SESSION_PATH, 'utf8');
-    const lines = content.trim().split('\n').filter(l => l);
-    
-    const messages = [];
-    for (const line of lines.slice(-limit * 3)) {
-      try {
-        const entry = JSON.parse(line);
-        if (entry.type === 'message' && entry.message) {
-          const msg = entry.message;
-          if (msg.role === 'user' || msg.role === 'assistant') {
-            let text = '';
-            if (typeof msg.content === 'string') {
-              text = msg.content;
-            } else if (Array.isArray(msg.content)) {
-              const textPart = msg.content.find(c => c.type === 'text');
-              text = textPart?.text || '';
-            }
-            
-            // Skip system messages
-            if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
-            if (text.includes('[Cron') || text.includes('systemEvent')) continue;
-            
-            // Clean markers
-            text = text
-              .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
-              .replace(/^\[Spark[^\]]*\]\s*/g, '')
-              .replace(/\n?\[message_id:[^\]]+\]/g, '')
-              .trim();
-            
-            if (text && text.length < 300) {
-              messages.push(`${msg.role === 'user' ? 'User' : 'You'}: ${text}`);
-            }
-          }
-        }
-      } catch {}
-    }
-    
-    return messages.slice(-limit).join('\n');
-  } catch (e) {
-    console.error('Failed to load context:', e.message);
-    return '';
-  }
-}
-
-// Append to session for continuity with text chat
-function appendToSession(role, content) {
-  try {
-    const entry = {
-      type: 'message',
-      id: Math.random().toString(36).slice(2, 10),
-      timestamp: new Date().toISOString(),
-      message: {
-        role,
-        content: [{ type: 'text', text: `[Spark Voice] ${content}` }],
-        timestamp: Date.now()
-      }
-    };
-    appendFileSync(MAIN_SESSION_PATH, JSON.stringify(entry) + '\n');
-  } catch (e) {
-    console.error('Failed to append to session:', e.message);
-  }
-}
 
 /**
  * Handle a pure realtime voice session
@@ -129,7 +45,7 @@ export function handleRealtimeSession(clientWs) {
     isConnected = true;
 
     // Load recent context
-    const context = loadConversationContext(5);
+    const context = loadConversationContext({ limit: 5, format: 'text', maxLength: 300 });
     
     // Get current time in Singapore
     const sgTime = new Date().toLocaleString('en-SG', { 

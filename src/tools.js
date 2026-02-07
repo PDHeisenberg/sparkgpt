@@ -5,24 +5,14 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
+import { getGatewayToken } from './services/shared.js';
 
 // Google Calendar setup
 const GOOGLE_CREDS_PATH = '/home/heisenberg/.clawdbot/google/credentials.json';
 const CALENDAR_ID = 'primary';
 
-// Gateway for Clawdbot queries
+// Gateway for Claude queries
 const GATEWAY_URL = 'http://localhost:18789';
-
-function getGatewayToken() {
-  const configPath = '/home/heisenberg/.clawdbot/clawdbot.json';
-  if (existsSync(configPath)) {
-    try {
-      const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
-      return cfg.gateway?.auth?.token;
-    } catch {}
-  }
-  return null;
-}
 
 // Load and refresh Google credentials
 async function getGoogleAccessToken() {

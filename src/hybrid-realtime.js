@@ -13,8 +13,7 @@
  */
 
 import WebSocket from 'ws';
-import { readFileSync, existsSync, appendFileSync } from 'fs';
-import { join } from 'path';
+import { getOpenAIKey, getGatewayToken, loadConversationContext, appendToSession } from './services/shared.js';
 
 // OpenAI Realtime API endpoint
 const REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
@@ -22,105 +21,12 @@ const REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-pre
 // Gateway for Claude processing
 const GATEWAY_URL = 'http://localhost:18789';
 
-// Session config
-const SESSIONS_DIR = '/home/heisenberg/.clawdbot/agents/main/sessions';
-const MAIN_SESSION_ID = 'd0bddcfd-ba66-479f-8f30-5cc187be5e61';
-const MAIN_SESSION_PATH = join(SESSIONS_DIR, `${MAIN_SESSION_ID}.jsonl`);
-
-// Get API keys
-function getOpenAIKey() {
-  const configPath = '/home/heisenberg/.clawdbot/clawdbot.json';
-  if (existsSync(configPath)) {
-    const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
-    return cfg.skills?.entries?.['openai-whisper-api']?.apiKey;
-  }
-  return null;
-}
-
-function getGatewayToken() {
-  const configPath = '/home/heisenberg/.clawdbot/clawdbot.json';
-  if (existsSync(configPath)) {
-    try {
-      const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
-      return cfg.gateway?.auth?.token;
-    } catch {}
-  }
-  return null;
-}
-
-// Load recent conversation context for Claude
-function loadConversationContext(limit = 10) {
-  try {
-    if (!existsSync(MAIN_SESSION_PATH)) return [];
-    
-    const content = readFileSync(MAIN_SESSION_PATH, 'utf8');
-    const lines = content.trim().split('\n').filter(l => l);
-    
-    const messages = [];
-    for (const line of lines.slice(-limit * 2)) {
-      try {
-        const entry = JSON.parse(line);
-        if (entry.type === 'message' && entry.message) {
-          const msg = entry.message;
-          if (msg.role === 'user' || msg.role === 'assistant') {
-            let text = '';
-            if (typeof msg.content === 'string') {
-              text = msg.content;
-            } else if (Array.isArray(msg.content)) {
-              const textPart = msg.content.find(c => c.type === 'text');
-              text = textPart?.text || '';
-            }
-            
-            // Skip system messages
-            if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
-            
-            // Clean markers
-            text = text
-              .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
-              .replace(/^\[Spark[^\]]*\]\s*/g, '')
-              .replace(/\n?\[message_id:[^\]]+\]/g, '')
-              .trim();
-            
-            if (text && text.length < 1000) {
-              messages.push({ role: msg.role, content: text });
-            }
-          }
-        }
-      } catch {}
-    }
-    
-    return messages.slice(-limit);
-  } catch (e) {
-    console.error('Failed to load context:', e.message);
-    return [];
-  }
-}
-
-// Append to session for continuity
-function appendToSession(role, content) {
-  try {
-    const entry = {
-      type: 'message',
-      id: Math.random().toString(36).slice(2, 10),
-      timestamp: new Date().toISOString(),
-      message: {
-        role,
-        content: [{ type: 'text', text: `[Spark Voice Realtime] ${content}` }],
-        timestamp: Date.now()
-      }
-    };
-    appendFileSync(MAIN_SESSION_PATH, JSON.stringify(entry) + '\n');
-  } catch (e) {
-    console.error('Failed to append to session:', e.message);
-  }
-}
-
 // Send to Claude via Gateway for processing
 async function processWithClaude(userMessage) {
   const gatewayToken = getGatewayToken();
   if (!gatewayToken) throw new Error('Gateway token not found');
   
-  const history = loadConversationContext(10);
+  const history = loadConversationContext({ limit: 10 });
   
   const systemPrompt = `You are Spark, a voice assistant for Parth.
 
@@ -281,7 +187,7 @@ export function handleHybridRealtimeSession(clientWs) {
             clientWs.send(JSON.stringify({ type: 'transcript', text: currentTranscript }));
             
             // Append user message to session
-            appendToSession('user', currentTranscript);
+            appendToSession('user', currentTranscript, 'Spark Voice Realtime');
             
             // Notify client we're processing with Claude
             clientWs.send(JSON.stringify({ type: 'processing', engine: 'claude' }));
@@ -293,7 +199,7 @@ export function handleHybridRealtimeSession(clientWs) {
               console.log(`🤖 Claude response: "${response.slice(0, 50)}..."`);
               
               // Append assistant response to session
-              appendToSession('assistant', response);
+              appendToSession('assistant', response, 'Spark Voice Realtime');
               
               // Send text response
               clientWs.send(JSON.stringify({ type: 'text', content: response }));
