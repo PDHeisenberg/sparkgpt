@@ -10,7 +10,8 @@ import {
   isMessageDisplayed, 
   formatMessage,
   formatFileSize,
-  extractMessageText
+  extractMessageText,
+  escapeHtml
 } from './modules/ui.js';
 import {
   getRealtimeWsUrl,
@@ -156,7 +157,7 @@ function updateSessionsPopupContent(popup) {
           <div style="opacity: 0.6; margin-top: 2px;">${getSessionIcon(s)}</div>
           <div style="flex: 1; min-width: 0;">
             <div style="font-weight: 500; font-size: 13px; color: var(--text);">
-              ${s.label || 'Task'}
+              ${escapeHtml(s.label || 'Task')}
             </div>
             <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
               ${getSessionDescription(s)}

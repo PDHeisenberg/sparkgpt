@@ -33,11 +33,31 @@ export function isMessageDisplayed(text) {
   return displayedMessageHashes.has(hashMessageContent(text));
 }
 
-export function formatMessage(text) {
-  return text
+/**
+ * Escape a string for safe insertion into HTML
+ * @param {string} str - Raw string
+ * @returns {string} HTML-escaped string
+ */
+export function escapeHtml(str) {
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+export function formatMessage(text) {
+  // Step 1: HTML-escape ALL user content first (prevents XSS)
+  let escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+
+  // Step 2: Apply safe markdown-like formatting on already-escaped text
+  return escaped
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\n\n/g, '</p><p>')
