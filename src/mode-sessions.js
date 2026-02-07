@@ -12,6 +12,7 @@ import { join } from 'path';
 import { log, debug, error as logError } from './logger.js';
 import { CLI_TIMEOUT_MS } from './constants.js';
 import { SESSIONS_DIR, extractTextFromContent } from './services/session.js';
+import { getLatestSession, createSession, updateSessionTitle, incrementMessageCount } from './mode-session-index.js';
 
 const OPENCLAW_PATH = '/home/heisenberg/.npm-global/bin/openclaw';
 
@@ -221,9 +222,10 @@ function extractProgress(entry) {
  * @param {string} mode - Mode name (dev, research, plan)
  * @param {string} text - User's message text
  * @param {Function} sendToClient - Function to send data back to the client
+ * @param {string} [modeSessionId] - Optional specific mode session ID from the index
  * @returns {Promise<boolean>} - Whether the message was successfully routed
  */
-export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
+export function routeModeMessage(ws, sessionId, mode, text, sendToClient, modeSessionId) {
   const modeConfig = getModeSessionConfig(mode);
   if (!modeConfig) {
     log(`❌ [${sessionId}] Unknown mode: ${mode}`);
@@ -232,8 +234,31 @@ export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
     return Promise.resolve(false);
   }
 
-  log(`🔀 [${sessionId}] Routing to ${modeConfig.label}: ${text.slice(0, 80)}...`);
+  // Resolve the target session ID from the multi-session index
+  let targetSessionId = modeSessionId;
+  if (!targetSessionId) {
+    // Use latest session, or create one if none exists
+    let latestSession = getLatestSession(mode);
+    if (!latestSession) {
+      latestSession = createSession(mode);
+    }
+    targetSessionId = latestSession.id;
+  }
+
+  log(`🔀 [${sessionId}] Routing to ${modeConfig.label} (session: ${targetSessionId}): ${text.slice(0, 80)}...`);
   sendToClient(sessionId, { type: 'thinking' });
+
+  // Auto-set session title from first message if not set
+  const latestSession = getLatestSession(mode);
+  if (latestSession && latestSession.id === targetSessionId && !latestSession.title) {
+    const autoTitle = text.slice(0, 50).replace(/\n/g, ' ').trim();
+    if (autoTitle) {
+      updateSessionTitle(mode, targetSessionId, autoTitle);
+    }
+  }
+
+  // Increment message count
+  incrementMessageCount(mode, targetSessionId);
 
   // Prepend mode-specific system prompt as context
   const systemPrompt = MODE_SYSTEM_PROMPTS[mode];
@@ -251,7 +276,7 @@ export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
     // Start watching the transcript file for real-time progress updates
     const abortController = new AbortController();
     const stopWatching = watchSessionProgress(
-      modeConfig.sessionId,
+      targetSessionId,
       (progress) => {
         debug(`📊 [${sessionId}] Progress: ${progress.status}`);
         sendToClient(sessionId, progress);
@@ -259,10 +284,10 @@ export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
       abortController.signal
     );
 
-    // Use openclaw agent CLI with --session-id to target the isolated mode session
+    // Use openclaw agent CLI with --session-id to target the mode session
     const proc = spawn(OPENCLAW_PATH, [
       'agent',
-      '--session-id', modeConfig.sessionId,
+      '--session-id', targetSessionId,
       '--message', fullMessage,
       '--json'
     ], {
@@ -343,16 +368,29 @@ export function routeModeMessage(ws, sessionId, mode, text, sendToClient) {
  * 
  * @param {string} mode - Mode name (dev, research, plan)
  * @param {number} limit - Max messages to return
+ * @param {string} [modeSessionId] - Optional specific session ID; defaults to latest
  * @returns {Array} - Array of {role, content} message objects
  */
-export function getModeHistory(mode, limit = 50) {
+export function getModeHistory(mode, limit = 50, modeSessionId) {
   const modeConfig = getModeSessionConfig(mode);
   if (!modeConfig) return [];
 
+  // Resolve which session to read
+  let targetSessionId = modeSessionId;
+  if (!targetSessionId) {
+    const latest = getLatestSession(mode);
+    if (latest) {
+      targetSessionId = latest.id;
+    } else {
+      // Fall back to legacy deterministic ID
+      targetSessionId = modeConfig.sessionId;
+    }
+  }
+
   try {
-    const sessionPath = join(SESSIONS_DIR, `${modeConfig.sessionId}.jsonl`);
+    const sessionPath = join(SESSIONS_DIR, `${targetSessionId}.jsonl`);
     if (!existsSync(sessionPath)) {
-      debug(`📦 No history file for ${modeConfig.label}`);
+      debug(`📦 No history file for ${modeConfig.label} (session: ${targetSessionId})`);
       return [];
     }
 

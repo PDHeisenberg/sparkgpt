@@ -2242,6 +2242,7 @@ const sessionSendBtn = document.getElementById('session-send-btn');
 const sessionBackBtn = document.getElementById('session-back-btn');
 
 let currentSessionMode = null; // 'dev', 'research', 'plan', 'video'
+let currentSessionId = null;   // The specific session ID from the index
 let sessionPageProcessing = false;
 
 // Mode configurations for session page
@@ -2345,7 +2346,7 @@ function stopSessionStatusPolling() {
 }
 
 // Show session page for a specific mode
-async function showSessionPage(mode) {
+async function showSessionPage(mode, specificSessionId) {
   const config = SESSION_MODE_CONFIG[mode];
   if (!config) {
     console.error('Unknown session mode:', mode);
@@ -2360,6 +2361,30 @@ async function showSessionPage(mode) {
   // Clear messages
   sessionMessagesEl.innerHTML = '';
   
+  // Resolve session ID — use specific one if provided, else fetch latest
+  if (specificSessionId) {
+    currentSessionId = specificSessionId;
+  } else {
+    try {
+      const res = await fetch(`/api/modes/${mode}/sessions`);
+      const data = await res.json();
+      if (data.sessions && data.sessions.length > 0) {
+        currentSessionId = data.sessions[0].id; // Already sorted by createdAt desc
+      } else {
+        // Create a new session
+        const createRes = await fetch(`/api/modes/${mode}/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const newSession = await createRes.json();
+        currentSessionId = newSession.id;
+      }
+    } catch (e) {
+      console.error('Failed to resolve session ID:', e);
+      currentSessionId = null;
+    }
+  }
+  
+  // Update header title
+  updateSessionHeaderTitle(mode);
+  
   // Show session page
   sessionPage.classList.add('show');
   
@@ -2373,18 +2398,37 @@ async function showSessionPage(mode) {
   setTimeout(() => sessionInput.focus(), 100);
 }
 
+// Update session header title
+function updateSessionHeaderTitle(mode) {
+  const headerTitle = document.getElementById('session-header-title');
+  if (headerTitle) {
+    const config = SESSION_MODE_CONFIG[mode];
+    headerTitle.textContent = config ? `${config.icon} ${config.name}` : mode;
+  }
+}
+
 // Hide session page
 function hideSessionPage() {
   sessionPage.classList.remove('show');
   currentSessionMode = null;
+  currentSessionId = null;
   sessionPageProcessing = false;
   stopSessionStatusPolling();
+  // Also close history panel if open
+  document.getElementById('session-history-panel')?.classList.remove('show');
 }
 
 // Load session history from API
 async function loadSessionHistory(mode, config) {
   try {
-    const res = await fetch(`/api/modes/${mode}/history?limit=50`);
+    // Use specific session endpoint if we have a sessionId, otherwise fallback to mode history
+    let url;
+    if (currentSessionId) {
+      url = `/api/modes/${mode}/sessions/${currentSessionId}/history?limit=50`;
+    } else {
+      url = `/api/modes/${mode}/history?limit=50`;
+    }
+    const res = await fetch(url);
     const data = await res.json();
     const messages = data.messages || [];
     
@@ -2402,7 +2446,7 @@ async function loadSessionHistory(mode, config) {
       for (const msg of messages) {
         const text = extractMessageText(msg);
         if (text) {
-          addSessionMessage(msg.role === 'assistant' ? 'bot' : 'user', text);
+          addSessionMessage(msg.role === 'assistant' ? 'bot' : 'user', text, msg.timestamp);
         }
       }
       // Scroll to bottom
@@ -2422,8 +2466,8 @@ async function loadSessionHistory(mode, config) {
 
 // extractMessageText (used here) imported from modules/ui.js
 
-// Add message to session page
-function addSessionMessage(type, text) {
+// Add message to session page (matches main chat styling)
+function addSessionMessage(type, text, timestamp) {
   // Remove empty state if present
   const emptyState = sessionMessagesEl.querySelector('.session-empty-state');
   if (emptyState) emptyState.remove();
@@ -2437,9 +2481,38 @@ function addSessionMessage(type, text) {
     el.textContent = text;
   }
   
+  // Add timestamp
+  if (timestamp) {
+    const timeEl = document.createElement('span');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = formatRelativeTime(timestamp);
+    el.appendChild(timeEl);
+  }
+  
   sessionMessagesEl.appendChild(el);
   sessionMessagesEl.scrollTop = sessionMessagesEl.scrollHeight;
   return el;
+}
+
+// Format relative time for session messages
+function formatRelativeTime(ts) {
+  if (!ts) return '';
+  const now = Date.now();
+  const time = typeof ts === 'number' ? ts : new Date(ts).getTime();
+  if (isNaN(time)) return '';
+  
+  const diffSec = Math.floor((now - time) / 1000);
+  if (diffSec < 60) return 'just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay === 1) return 'yesterday';
+  if (diffDay < 7) return `${diffDay}d ago`;
+  // Format as date
+  const d = new Date(time);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 // Show thinking indicator in session
@@ -2498,6 +2571,7 @@ async function sendSessionMessage() {
     ws.send(JSON.stringify({
       type: 'mode_message',
       sparkMode: currentSessionMode,
+      sessionId: currentSessionId,
       text: text
     }));
   } else {
@@ -2528,12 +2602,25 @@ sessionSendBtn?.addEventListener('click', sendSessionMessage);
 
 sessionBackBtn?.addEventListener('click', hideSessionPage);
 
-// New Session button — clears session display for a fresh start
-document.getElementById('session-new-btn')?.addEventListener('click', () => {
+// New Session button — creates a new session via API
+document.getElementById('session-new-btn')?.addEventListener('click', async () => {
   if (!currentSessionMode) return;
   // Confirm if there's existing content
   const hasMessages = sessionMessagesEl.querySelectorAll('.msg').length > 0;
-  if (hasMessages && !confirm('Start a new session? Current session will be cleared.')) return;
+  if (hasMessages && !confirm('Start a new session? Current session will be saved.')) return;
+  
+  try {
+    // Create new session via API
+    const res = await fetch(`/api/modes/${currentSessionMode}/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const newSession = await res.json();
+    currentSessionId = newSession.id;
+    console.log('Created new session:', newSession.id);
+  } catch (e) {
+    console.error('Failed to create new session:', e);
+  }
   
   // Clear the session messages display
   sessionMessagesEl.innerHTML = '';
@@ -2552,6 +2639,93 @@ document.getElementById('session-new-btn')?.addEventListener('click', () => {
   
   // Focus input
   sessionInput?.focus();
+});
+
+// ============================================================================
+// SESSION HISTORY PANEL
+// ============================================================================
+
+const sessionHistoryPanel = document.getElementById('session-history-panel');
+const sessionHistoryList = document.getElementById('session-history-list');
+
+// Open history panel
+document.getElementById('session-history-btn')?.addEventListener('click', async () => {
+  if (!currentSessionMode) return;
+  
+  sessionHistoryPanel?.classList.add('show');
+  sessionHistoryList.innerHTML = '<div class="session-history-empty">Loading...</div>';
+  
+  try {
+    const res = await fetch(`/api/modes/${currentSessionMode}/sessions`);
+    const data = await res.json();
+    const sessions = data.sessions || [];
+    
+    if (sessions.length === 0) {
+      sessionHistoryList.innerHTML = '<div class="session-history-empty">No sessions yet</div>';
+      return;
+    }
+    
+    sessionHistoryList.innerHTML = '';
+    for (const s of sessions) {
+      const entry = document.createElement('div');
+      entry.className = 'session-history-entry';
+      if (s.id === currentSessionId) entry.classList.add('active');
+      
+      const title = s.title || 'Untitled';
+      const timeStr = formatRelativeTime(s.createdAt);
+      const countStr = s.messageCount ? `${s.messageCount} msgs` : '';
+      
+      entry.innerHTML = `
+        <div class="session-history-entry-title">${escapeHtml(title)}</div>
+        <div class="session-history-entry-meta">
+          <span>${timeStr}</span>
+          ${countStr ? `<span>· ${countStr}</span>` : ''}
+        </div>
+      `;
+      
+      entry.addEventListener('click', () => {
+        sessionHistoryPanel?.classList.remove('show');
+        // Reload with this session
+        currentSessionId = s.id;
+        sessionMessagesEl.innerHTML = '';
+        const config = SESSION_MODE_CONFIG[currentSessionMode];
+        if (config) loadSessionHistory(currentSessionMode, config);
+      });
+      
+      sessionHistoryList.appendChild(entry);
+    }
+  } catch (e) {
+    console.error('Failed to load sessions:', e);
+    sessionHistoryList.innerHTML = '<div class="session-history-empty">Failed to load sessions</div>';
+  }
+});
+
+// Close history panel
+document.getElementById('session-history-close')?.addEventListener('click', () => {
+  sessionHistoryPanel?.classList.remove('show');
+});
+
+// ============================================================================
+// SESSION MESSAGES — long-press context menu support
+// ============================================================================
+
+sessionMessagesEl?.addEventListener('touchstart', (e) => {
+  const msgEl = e.target.closest('.msg');
+  if (!msgEl || msgEl.classList.contains('system') || msgEl.classList.contains('thinking')) return;
+  
+  const touch = e.touches[0];
+  longPressTimer = setTimeout(() => {
+    e.preventDefault();
+    showMsgMenu(msgEl, touch.clientX, touch.clientY);
+  }, 500);
+}, { passive: false });
+
+sessionMessagesEl?.addEventListener('touchend', () => {
+  clearTimeout(longPressTimer);
+});
+
+sessionMessagesEl?.addEventListener('touchmove', () => {
+  clearTimeout(longPressTimer);
 });
 
 // Restore session state from localStorage on load
@@ -2795,15 +2969,14 @@ document.getElementById('devteam-btn')?.addEventListener('click', () => {
       subtitle: 'Senior engineer — reads code, writes tests, commits',
       placeholder: 'Describe the task or issue to fix...',
       submitText: 'Start Dev Session',
-      onSubmit: (text) => {
-        showSessionPage('dev');
-        setTimeout(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            addSessionMessage('user', text);
-            showSessionThinking();
-            ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'dev', text }));
-          }
-        }, 150);
+      onSubmit: async (text) => {
+        await showSessionPage('dev');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          addSessionMessage('user', text);
+          showSessionThinking();
+          sessionPageProcessing = true;
+          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'dev', sessionId: currentSessionId, text }));
+        }
       }
     });
   }
@@ -2822,15 +2995,14 @@ document.getElementById('researcher-btn')?.addEventListener('click', () => {
       subtitle: 'Deep research with sources and analysis',
       placeholder: 'What topic do you want to research?',
       submitText: 'Start Research',
-      onSubmit: (text) => {
-        showSessionPage('research');
-        setTimeout(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            addSessionMessage('user', text);
-            showSessionThinking();
-            ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'research', text }));
-          }
-        }, 150);
+      onSubmit: async (text) => {
+        await showSessionPage('research');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          addSessionMessage('user', text);
+          showSessionThinking();
+          sessionPageProcessing = true;
+          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'research', sessionId: currentSessionId, text }));
+        }
       }
     });
   }
@@ -2849,15 +3021,14 @@ document.getElementById('plan-btn')?.addEventListener('click', () => {
       subtitle: 'Technical specs with phases and risks',
       placeholder: 'What do you want to plan?',
       submitText: 'Start Planning',
-      onSubmit: (text) => {
-        showSessionPage('plan');
-        setTimeout(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            addSessionMessage('user', text);
-            showSessionThinking();
-            ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'plan', text }));
-          }
-        }, 150);
+      onSubmit: async (text) => {
+        await showSessionPage('plan');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          addSessionMessage('user', text);
+          showSessionThinking();
+          sessionPageProcessing = true;
+          ws.send(JSON.stringify({ type: 'mode_message', sparkMode: 'plan', sessionId: currentSessionId, text }));
+        }
       }
     });
   }

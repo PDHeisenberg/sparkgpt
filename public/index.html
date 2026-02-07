@@ -17,7 +17,7 @@
   <!-- Preconnect to speed up WebSocket -->
   <link rel="preconnect" href="/">
   <link rel="dns-prefetch" href="/">
-  <link rel="stylesheet" href="styles/main.min.css?v=128">
+  <link rel="stylesheet" href="styles/main.min.css?v=129">
 </head>
 <body>
   <!-- PC Status Pill -->
@@ -316,7 +316,11 @@
       <button id="session-back-btn" class="session-back-btn" aria-label="Go back">
         <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       </button>
+      <span id="session-header-title" class="session-header-title"></span>
       <div style="flex:1"></div>
+      <button id="session-history-btn" class="session-history-btn" title="Session history">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      </button>
       <button id="session-new-btn" class="session-new-btn" title="New session" aria-label="New session">
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
       </button>
@@ -330,6 +334,17 @@
         </svg>
       </button>
     </div>
+  </div>
+
+  <!-- Session history slide-out panel -->
+  <div id="session-history-panel" class="session-history-panel">
+    <div class="session-history-header">
+      <span class="session-history-title">Sessions</span>
+      <button id="session-history-close" class="session-history-close" aria-label="Close">
+        <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div id="session-history-list" class="session-history-list"></div>
   </div>
 
   <div id="toast"></div>
@@ -355,6 +370,6 @@
       </svg>
     </button>
   </div>
-  <script type="module" src="app.bundle.js?v=128"></script>
+  <script type="module" src="app.bundle.js?v=129"></script>
 </body>
 </html>

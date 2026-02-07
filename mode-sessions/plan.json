@@ -1,0 +1,11 @@
+{
+  "sessions": [
+    {
+      "id": "spark-pln-00000-0000-0000-000000000003",
+      "createdAt": "2026-02-07T07:00:06.127Z",
+      "title": "Migrated Session",
+      "messageCount": 85,
+      "legacy": true
+    }
+  ]
+}

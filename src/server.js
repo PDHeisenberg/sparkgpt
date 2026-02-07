@@ -62,6 +62,7 @@ import {
 } from './constants.js';
 import { log, debug, warn, error as logError } from './logger.js';
 import { routeModeMessage, getModeHistory, getActiveModeSessions } from './mode-sessions.js';
+import { listSessions, createSession as createModeSession, getLatestSession as getLatestModeSession, getSessionIndex } from './mode-session-index.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
@@ -548,6 +549,44 @@ app.get('/api/mode-sessions', (req, res) => {
     res.json({ sessions });
   } catch (e) {
     logError('Mode sessions error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// List sessions for a mode (multi-session support)
+app.get('/api/modes/:mode/sessions', (req, res) => {
+  try {
+    const mode = req.params.mode;
+    const sessions = listSessions(mode);
+    res.json({ mode, sessions });
+  } catch (e) {
+    logError('List mode sessions error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a new session for a mode
+app.post('/api/modes/:mode/sessions', (req, res) => {
+  try {
+    const mode = req.params.mode;
+    const title = req.body?.title || null;
+    const session = createModeSession(mode, title);
+    res.json(session);
+  } catch (e) {
+    logError('Create mode session error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get history for a specific session
+app.get('/api/modes/:mode/sessions/:sessionId/history', (req, res) => {
+  try {
+    const { mode, sessionId } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+    const messages = getModeHistory(mode, limit, sessionId);
+    res.json({ mode, sessionId, messages });
+  } catch (e) {
+    logError('Session history error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -1166,24 +1205,24 @@ wss.on('connection', (ws, request) => {
 
       // Handle mode_message: route to isolated mode session
       if (msg.type === 'mode_message') {
-        const { sparkMode, text } = msg;
+        const { sparkMode, text, sessionId: modeSessionId } = msg;
         if (!sparkMode || !text?.trim()) {
           ws.send(JSON.stringify({ type: 'error', message: 'Missing sparkMode or text for mode_message' }));
           return;
         }
-        log(`📦 [${sessionId}] Mode message: ${sparkMode} - ${text.slice(0, 50)}...`);
-        await routeModeMessage(ws, sessionId, sparkMode, text, sendToClient);
+        log(`📦 [${sessionId}] Mode message: ${sparkMode} (session: ${modeSessionId || 'latest'}) - ${text.slice(0, 50)}...`);
+        await routeModeMessage(ws, sessionId, sparkMode, text, sendToClient, modeSessionId);
         return;
       }
 
       // Handle mode_history: return history for a mode session
       if (msg.type === 'mode_history') {
-        const { sparkMode } = msg;
+        const { sparkMode, sessionId: modeSessionId } = msg;
         if (!sparkMode) {
           ws.send(JSON.stringify({ type: 'error', message: 'Missing sparkMode for mode_history' }));
           return;
         }
-        const messages = getModeHistory(sparkMode);
+        const messages = getModeHistory(sparkMode, 50, modeSessionId);
         ws.send(JSON.stringify({ type: 'mode_history', mode: sparkMode, messages }));
         return;
       }
