@@ -440,6 +440,20 @@
       border-radius: 4px;
     }
 
+    /* Message timestamps (main chat) */
+    .msg .msg-time {
+      display: block;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: 6px;
+      opacity: 0.7;
+    }
+
+    .msg.user .msg-time {
+      text-align: right;
+      color: rgba(255,255,255,0.6);
+    }
+
     /* Message context menu */
     .msg.selected {
       outline: 2px solid var(--accent);
@@ -1195,6 +1209,91 @@
 
     #file-input { display: none; }
 
+    /* Attachment preview */
+    .attachment-preview {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: var(--shortcut-bg);
+      border-radius: 12px;
+      max-width: 200px;
+    }
+
+    .attachment-preview.show {
+      display: flex;
+    }
+
+    .attachment-icon {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .attachment-icon svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--text-secondary);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    .attachment-icon.image svg {
+      stroke: var(--accent);
+    }
+
+    .attachment-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .attachment-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .attachment-size {
+      font-size: 10px;
+      color: var(--text-tertiary);
+    }
+
+    .remove-attachment-btn {
+      width: 20px;
+      height: 20px;
+      min-width: 20px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+
+    .remove-attachment-btn:hover,
+    .remove-attachment-btn:active {
+      opacity: 1;
+    }
+
+    .remove-attachment-btn svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--text-secondary);
+      stroke-width: 2;
+      fill: none;
+    }
+
     #text-input {
       flex: 1;
       background: transparent;
@@ -1375,7 +1474,7 @@
       display: none !important;
     }
 
-    /* Theme toggle button - right corner */
+    /* Theme toggle button - right corner (z-index 65 to appear above session page) */
     #theme-btn {
       position: fixed;
       top: 16px;
@@ -1390,7 +1489,7 @@
       border: 1px solid var(--glass-border);
       box-shadow: 0 2px 12px var(--glass-shadow);
       cursor: pointer;
-      z-index: 20;
+      z-index: 65;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1978,13 +2077,85 @@
     }
 
     /* ============================================================================
+       LEGACY MODE SYSTEM - enterMode() creates these elements
+       ============================================================================ */
+
+    .mode-empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 60px 20px;
+      gap: 12px;
+      opacity: 0.6;
+    }
+
+    .mode-empty-icon {
+      font-size: 48px;
+    }
+
+    .mode-empty-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .mode-empty-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      max-width: 260px;
+    }
+
+    .mode-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .mode-icon {
+      font-size: 16px;
+    }
+
+    .mode-name {
+      font-weight: 500;
+    }
+
+    .mode-exit-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 6px;
+      margin-left: 4px;
+      border-radius: 50%;
+      transition: background 0.2s;
+    }
+
+    .mode-exit-btn:hover,
+    .mode-exit-btn:active {
+      background: var(--shortcut-bg);
+    }
+
+    /* ============================================================================
        SESSION PAGE - Full-screen mode session interface
        ============================================================================ */
     
     .session-page {
       position: fixed;
       inset: 0;
-      background: var(--bg);
+      background-color: var(--bg);
+      background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
+      background-size: 20px 20px;
       z-index: 60;
       display: flex;
       flex-direction: column;
@@ -2041,7 +2212,7 @@
     }
     
     .session-messages .msg {
-      animation: msgIn 0.3s ease-out;
+      animation: msgIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
     
     .session-empty-state {
@@ -2078,71 +2249,129 @@
       right: 0;
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px;
       padding-bottom: calc(16px + env(safe-area-inset-bottom, 8px));
+      z-index: 61;
+    }
+
+    /* Gradient fade behind session input bar (matches main chat) */
+    .session-input-bar::before {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 120px;
+      background: linear-gradient(to top, var(--bg) 0%, color-mix(in srgb, var(--bg) 80%, transparent) 50%, transparent 100%);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    /* Floating pill container for session input (matches #input-bar) */
+    .session-input-pill {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
       background: var(--glass);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      border-top: 1px solid var(--glass-border);
-      z-index: 61;
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 4px 20px var(--glass-shadow);
+      border-radius: 28px;
+      padding: 8px 12px;
+      min-height: 56px;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    
-    .session-input {
-      flex: 1;
-      background: var(--input-bg);
-      border: 1px solid var(--input-border);
-      border-radius: 22px;
-      padding: 12px 16px;
-      color: var(--text);
-      font-size: 16px;
-      font-family: inherit;
-      resize: none;
-      min-height: 44px;
-      max-height: 120px;
-      overflow-y: auto;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    
-    .session-input:focus {
-      border-color: var(--accent);
-    }
-    
-    .session-input::placeholder {
-      color: var(--text-tertiary);
-    }
-    
-    .session-send-btn {
-      width: 44px;
-      height: 44px;
-      min-width: 44px;
-      border-radius: 50%;
+
+    .session-upload-btn {
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
+      flex-shrink: 0;
       border: none;
-      background: var(--input-bg);
+      background: transparent;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      opacity: 0.4;
       transition: all 0.2s;
     }
-    
-    .session-send-btn.active {
-      opacity: 1;
-      background: var(--accent);
+
+    .session-upload-btn:active {
+      transform: scale(0.9);
+      opacity: 0.6;
     }
-    
-    .session-send-btn svg {
-      width: 20px;
-      height: 20px;
+
+    .session-upload-btn svg {
+      width: 28px;
+      height: 28px;
       stroke: var(--text-secondary);
+      stroke-width: 1.8;
+      fill: none;
+    }
+
+    #session-file-input {
+      display: none;
+    }
+
+    .session-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 16px;
+      font-family: inherit;
+      resize: none;
+      min-height: 24px;
+      max-height: 120px;
+      overflow-y: auto;
+      outline: none;
+      padding: 6px 4px;
+      line-height: 1.4;
+    }
+
+    .session-input::placeholder {
+      color: var(--text-tertiary);
+    }
+
+    .session-send-btn {
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transform: scale(0.8);
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .session-send-btn.show {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .session-send-btn svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--accent);
       stroke-width: 2;
       fill: none;
     }
-    
-    .session-send-btn.active svg {
-      stroke: white;
+
+    /* Legacy active class support */
+    .session-send-btn.active {
+      opacity: 1;
+      transform: scale(1);
     }
 
     /* ============================================================================
@@ -2188,6 +2417,35 @@
       overflow: hidden;
       text-overflow: ellipsis;
       max-width: 180px;
+    }
+
+    /* ============================================================================
+       SESSION STATUS INDICATOR - connection status in session header
+       ============================================================================ */
+
+    .session-status-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 8px;
+    }
+
+    .session-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .session-status-indicator.connected .session-status-dot {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .session-status-indicator.connecting .session-status-dot {
+      background: #888;
+      animation: pulse 1.5s ease-in-out infinite;
     }
 
     /* ============================================================================

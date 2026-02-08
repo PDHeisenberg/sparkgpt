@@ -203,6 +203,19 @@
           </svg>
         </button>
         <input type="file" id="file-input" multiple accept="image/*,.pdf,.txt,.md,.json,.csv">
+        <!-- Attachment preview -->
+        <div id="attachment-preview" class="attachment-preview">
+          <div id="attachment-icon" class="attachment-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div class="attachment-info">
+            <span id="attachment-name" class="attachment-name"></span>
+            <span id="attachment-size" class="attachment-size"></span>
+          </div>
+          <button id="remove-attachment-btn" class="remove-attachment-btn" aria-label="Remove attachment">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
         <textarea id="text-input" placeholder="Talk to me" rows="1" aria-label="Message input"></textarea>
         <button id="send-btn" aria-label="Send message">
           <svg viewBox="0 0 24 24">
@@ -317,6 +330,10 @@
         <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       </button>
       <span id="session-header-title" class="session-header-title"></span>
+      <!-- Connection status indicator -->
+      <div id="session-status-indicator" class="session-status-indicator" title="Connection status">
+        <span class="session-status-dot"></span>
+      </div>
       <div style="flex:1"></div>
       <button id="session-history-btn" class="session-history-btn" title="Session history">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
@@ -327,12 +344,34 @@
     </div>
     <div id="session-messages" class="session-messages"></div>
     <div class="session-input-bar">
-      <textarea id="session-input" class="session-input" placeholder="Type a message..." rows="1"></textarea>
-      <button id="session-send-btn" class="session-send-btn" aria-label="Send">
-        <svg viewBox="0 0 24 24">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
-      </button>
+      <div class="session-input-pill">
+        <button id="session-upload-btn" class="session-upload-btn" title="Attach file" aria-label="Attach file">
+          <svg viewBox="0 0 24 24">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <input type="file" id="session-file-input" accept="image/*,.pdf,.txt,.md,.json,.csv">
+        <!-- Session attachment preview -->
+        <div id="session-attachment-preview" class="attachment-preview">
+          <div id="session-attachment-icon" class="attachment-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div class="attachment-info">
+            <span id="session-attachment-name" class="attachment-name"></span>
+            <span id="session-attachment-size" class="attachment-size"></span>
+          </div>
+          <button id="session-remove-attachment-btn" class="remove-attachment-btn" aria-label="Remove attachment">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <textarea id="session-input" class="session-input" placeholder="Type a message..." rows="1"></textarea>
+        <button id="session-send-btn" class="session-send-btn" aria-label="Send">
+          <svg viewBox="0 0 24 24">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 

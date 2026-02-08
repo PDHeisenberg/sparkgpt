@@ -33,20 +33,37 @@ const uploadBtn = document.getElementById('upload-btn');
 const fileInput = document.getElementById('file-input');
 const bottomEl = document.getElementById('bottom');
 const sparkStatusEl = document.getElementById('spark-status');
+const sessionStatusIndicator = document.getElementById('session-status-indicator');
 
-// Update Spark gateway connection status pill
+// Update Spark gateway connection status pill (and session page status)
 function updateSparkStatus(state) {
-  if (!sparkStatusEl) return;
-  sparkStatusEl.classList.remove('connected', 'connecting');
-  if (state === 'connected') {
-    sparkStatusEl.classList.add('connected');
-    sparkStatusEl.title = 'Clawdbot Gateway: Connected';
-  } else if (state === 'connecting') {
-    sparkStatusEl.classList.add('connecting');
-    sparkStatusEl.title = 'Clawdbot Gateway: Connecting...';
-  } else {
-    // disconnected - no class, shows red
-    sparkStatusEl.title = 'Clawdbot Gateway: Disconnected';
+  // Update main status pill
+  if (sparkStatusEl) {
+    sparkStatusEl.classList.remove('connected', 'connecting');
+    if (state === 'connected') {
+      sparkStatusEl.classList.add('connected');
+      sparkStatusEl.title = 'Clawdbot Gateway: Connected';
+    } else if (state === 'connecting') {
+      sparkStatusEl.classList.add('connecting');
+      sparkStatusEl.title = 'Clawdbot Gateway: Connecting...';
+    } else {
+      // disconnected - no class, shows red
+      sparkStatusEl.title = 'Clawdbot Gateway: Disconnected';
+    }
+  }
+
+  // Update session page status indicator
+  if (sessionStatusIndicator) {
+    sessionStatusIndicator.classList.remove('connected', 'connecting');
+    if (state === 'connected') {
+      sessionStatusIndicator.classList.add('connected');
+      sessionStatusIndicator.title = 'Connected';
+    } else if (state === 'connecting') {
+      sessionStatusIndicator.classList.add('connecting');
+      sessionStatusIndicator.title = 'Connecting...';
+    } else {
+      sessionStatusIndicator.title = 'Disconnected';
+    }
   }
 }
 const voiceBar = document.getElementById('voice-bar');
@@ -322,9 +339,9 @@ function renderPreloadedHistory() {
   // Prevent double-rendering
   if (historyRendered) return;
   if (!preloadedHistory || preloadedHistory.length === 0) return;
-  
+
   historyRendered = true;
-  
+
   preloadedHistory.forEach(m => {
     const el = document.createElement('div');
     el.className = `msg ${m.role === 'user' ? 'user' : 'bot'}`;
@@ -333,9 +350,18 @@ function renderPreloadedHistory() {
     } else {
       el.innerHTML = formatMessage(m.text);
     }
+
+    // Add timestamp if available
+    if (m.timestamp) {
+      const timeEl = document.createElement('span');
+      timeEl.className = 'msg-time';
+      timeEl.textContent = formatRelativeTime(m.timestamp);
+      el.appendChild(timeEl);
+    }
+
     messagesEl.appendChild(el);
   });
-  
+
   // Scroll to bottom
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -581,13 +607,13 @@ function addMsg(text, type, options = {}) {
       return null; // Don't add message to DOM
     }
   }
-  
+
   // Track this message for deduplication
   trackDisplayedMessage(text);
-  
+
   const el = document.createElement('div');
   el.className = `msg ${type}`;
-  
+
   if (type === 'bot') {
     el.innerHTML = formatMessage(text);
   } else if (type === 'user') {
@@ -595,9 +621,18 @@ function addMsg(text, type, options = {}) {
   } else {
     el.textContent = text;
   }
-  
+
+  // Add timestamp if provided (options.timestamp)
+  const timestamp = options.timestamp;
+  if (timestamp) {
+    const timeEl = document.createElement('span');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = formatRelativeTime(timestamp);
+    el.appendChild(timeEl);
+  }
+
   messagesEl.appendChild(el);
-  
+
   // Only auto-scroll if user is near bottom (allows scrolling up to read history)
   // Exception: user messages always scroll to bottom
   if (type === 'user') {
@@ -1961,16 +1996,28 @@ menuCopy?.addEventListener('click', () => {
   hideMsgMenu();
 });
 
-// Edit action (puts text in input)
+// Edit action (puts text in input) - routes to session input if session page is active
 menuEdit?.addEventListener('click', () => {
   if (!selectedMsg) return;
   const text = selectedMsg.textContent || selectedMsg.innerText;
-  if (textInput) {
-    textInput.value = text;
-    textInput.style.height = 'auto';
-    textInput.style.height = Math.min(textInput.scrollHeight, 120) + 'px';
-    sendBtn?.classList.add('show');
-    textInput.focus();
+
+  // Check if session page is active
+  if (currentSessionMode && sessionPage?.classList.contains('show')) {
+    if (sessionInput) {
+      sessionInput.value = text;
+      sessionInput.style.height = 'auto';
+      sessionInput.style.height = Math.min(sessionInput.scrollHeight, 120) + 'px';
+      sessionSendBtn?.classList.add('active');
+      sessionInput.focus();
+    }
+  } else {
+    if (textInput) {
+      textInput.value = text;
+      textInput.style.height = 'auto';
+      textInput.style.height = Math.min(textInput.scrollHeight, 120) + 'px';
+      sendBtn?.classList.add('show');
+      textInput.focus();
+    }
   }
   hideMsgMenu();
 });
@@ -2119,16 +2166,9 @@ document.querySelectorAll('.shortcut').forEach(btn => {
   });
 });
 
-// Articulations mode button handler - enters dedicated articulate session
+// Articulations mode button handler - opens articulate session page
 document.getElementById('articulations-btn')?.addEventListener('click', async () => {
-  // Enter articulate mode session
-  await enterMode('articulate');
-  
-  // Update placeholder for articulate context
-  if (textInput) textInput.placeholder = 'Type text to refine...';
-  
-  // Focus input
-  textInput?.focus();
+  showSessionPage('articulate');
 });
 
 // ============================================================================
@@ -2140,7 +2180,9 @@ const activeSubagentSessions = {
   'spark-dev-mode': null,
   'spark-research-mode': null,
   'spark-plan-mode': null,
-  'spark-videogen-mode': null
+  'spark-videogen-mode': null,
+  'spark-articulate-mode': null,
+  'spark-dailyreports-mode': null
 };
 
 // Map button IDs to session labels
@@ -2148,7 +2190,9 @@ const buttonToSessionLabel = {
   'devteam-btn': 'spark-dev-mode',
   'researcher-btn': 'spark-research-mode',
   'plan-btn': 'spark-plan-mode',
-  'videogen-btn': 'spark-videogen-mode'
+  'videogen-btn': 'spark-videogen-mode',
+  'articulations-btn': 'spark-articulate-mode',
+  'todays-reports-btn': 'spark-dailyreports-mode'
 };
 
 // Map mode names to session labels
@@ -2156,7 +2200,9 @@ const modeToSessionLabel = {
   'dev': 'spark-dev-mode',
   'research': 'spark-research-mode',
   'plan': 'spark-plan-mode',
-  'videogen': 'spark-videogen-mode'
+  'videogen': 'spark-videogen-mode',
+  'articulate': 'spark-articulate-mode',
+  'dailyreports': 'spark-dailyreports-mode'
 };
 
 // Check for active subagent sessions (uses mode-sessions JSONL files, not OpenClaw sessions)
@@ -2278,6 +2324,22 @@ const SESSION_MODE_CONFIG = {
     placeholder: 'Describe the video you want to create...',
     emptyTitle: 'Video Gen',
     emptyDesc: 'Generate AI videos. Describe what you want to create.'
+  },
+  articulate: {
+    name: 'Articulate',
+    icon: '💬',
+    sessionKey: 'spark-articulate-mode',
+    placeholder: 'Type text to refine...',
+    emptyTitle: 'Articulate',
+    emptyDesc: 'Refine and improve your text. Paste content to polish.'
+  },
+  dailyreports: {
+    name: 'Daily Reports',
+    icon: '📊',
+    sessionKey: 'spark-dailyreports-mode',
+    placeholder: 'Ask about your portfolio or generate a briefing...',
+    emptyTitle: 'Daily Reports',
+    emptyDesc: 'View portfolio updates and generate market briefings.'
   }
 };
 
@@ -2471,16 +2533,19 @@ function addSessionMessage(type, text, timestamp) {
   // Remove empty state if present
   const emptyState = sessionMessagesEl.querySelector('.session-empty-state');
   if (emptyState) emptyState.remove();
-  
+
+  // Check if user is near bottom before adding message (for smart scroll)
+  const wasNearBottom = isNearBottom(sessionMessagesEl);
+
   const el = document.createElement('div');
   el.className = `msg ${type}`;
-  
+
   if (type === 'bot') {
     el.innerHTML = formatMessage(text);
   } else {
     el.textContent = text;
   }
-  
+
   // Add timestamp
   if (timestamp) {
     const timeEl = document.createElement('span');
@@ -2488,9 +2553,14 @@ function addSessionMessage(type, text, timestamp) {
     timeEl.textContent = formatRelativeTime(timestamp);
     el.appendChild(timeEl);
   }
-  
+
   sessionMessagesEl.appendChild(el);
-  sessionMessagesEl.scrollTop = sessionMessagesEl.scrollHeight;
+
+  // Smart scroll: only auto-scroll if user was near bottom or message is from user
+  if (type === 'user' || wasNearBottom) {
+    sessionMessagesEl.scrollTop = sessionMessagesEl.scrollHeight;
+  }
+
   return el;
 }
 
@@ -2552,28 +2622,70 @@ function updateSessionThinking(statusText) {
 // Send message in session page
 async function sendSessionMessage() {
   const text = sessionInput.value.trim();
-  if (!text || sessionPageProcessing) return;
-  
+  if (!text && !sessionPendingAttachment) return;
+  if (sessionPageProcessing) return;
+
+  let messageText = text;
+  let imageData = null;
+
+  // Handle attachment
+  if (sessionPendingAttachment) {
+    const file = sessionPendingAttachment;
+    try {
+      if (file.type.startsWith('image/')) {
+        // Read image as base64
+        imageData = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = rej;
+          r.readAsDataURL(file);
+        });
+        messageText = text || 'What is this image?';
+      } else {
+        const content = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = rej;
+          r.readAsText(file);
+        });
+        const preview = content.slice(0, 2000) + (content.length > 2000 ? '...' : '');
+        messageText = text ? `${text}\n\n[File: ${file.name}]\n${preview}` : `[File: ${file.name}]\n${preview}`;
+      }
+    } catch {
+      toast('Failed to read file', true);
+      return;
+    }
+
+    // Clear attachment
+    sessionPendingAttachment = null;
+    sessionAttachmentPreview?.classList.remove('show');
+  }
+
+  if (!messageText) return;
+
   sessionInput.value = '';
   sessionInput.style.height = 'auto';
   sessionSendBtn.classList.remove('active');
-  
+  sessionSendBtn.classList.remove('show');
+
   sessionPageProcessing = true;
-  
-  // Add user message
-  addSessionMessage('user', text);
-  
+
+  // Add user message (with image indicator if applicable)
+  addSessionMessage('user', imageData ? messageText + ' 📷' : messageText);
+
   // Show thinking
   showSessionThinking();
-  
+
   // Send via WebSocket
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
+    const payload = {
       type: 'mode_message',
       sparkMode: currentSessionMode,
       sessionId: currentSessionId,
-      text: text
-    }));
+      text: messageText
+    };
+    if (imageData) payload.image = imageData;
+    ws.send(JSON.stringify(payload));
   } else {
     removeSessionThinking();
     addSessionMessage('bot', 'Not connected. Please try again.');
@@ -2583,9 +2695,10 @@ async function sendSessionMessage() {
 
 // Session input handlers
 sessionInput?.addEventListener('input', () => {
-  const hasText = sessionInput.value.trim().length > 0;
-  sessionSendBtn?.classList.toggle('active', hasText);
-  
+  const hasText = sessionInput.value.trim().length > 0 || sessionPendingAttachment;
+  sessionSendBtn?.classList.toggle('show', hasText);
+  sessionSendBtn?.classList.toggle('active', hasText); // Keep legacy class for compatibility
+
   // Auto-resize
   sessionInput.style.height = 'auto';
   sessionInput.style.height = Math.min(sessionInput.scrollHeight, 120) + 'px';
@@ -2639,6 +2752,71 @@ document.getElementById('session-new-btn')?.addEventListener('click', async () =
   
   // Focus input
   sessionInput?.focus();
+});
+
+// ============================================================================
+// SESSION FILE UPLOAD
+// ============================================================================
+
+const sessionUploadBtn = document.getElementById('session-upload-btn');
+const sessionFileInput = document.getElementById('session-file-input');
+const sessionAttachmentPreview = document.getElementById('session-attachment-preview');
+const sessionAttachmentIcon = document.getElementById('session-attachment-icon');
+const sessionAttachmentName = document.getElementById('session-attachment-name');
+const sessionAttachmentSize = document.getElementById('session-attachment-size');
+const sessionRemoveAttachmentBtn = document.getElementById('session-remove-attachment-btn');
+
+let sessionPendingAttachment = null;
+
+sessionUploadBtn?.addEventListener('click', () => sessionFileInput?.click());
+
+sessionFileInput?.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  // Validate file size
+  if (file.size > CONFIG.maxFileSize) {
+    toast(`File too large (${formatFileSize(file.size)}). Maximum size is ${formatFileSize(CONFIG.maxFileSize)}.`, true);
+    sessionFileInput.value = '';
+    return;
+  }
+
+  // Store the file
+  sessionPendingAttachment = file;
+
+  // Update preview
+  if (sessionAttachmentName) sessionAttachmentName.textContent = file.name;
+  if (sessionAttachmentSize) sessionAttachmentSize.textContent = formatFileSize(file.size);
+
+  // Update icon based on type
+  if (sessionAttachmentIcon) {
+    if (file.type.startsWith('image/')) {
+      sessionAttachmentIcon.classList.add('image');
+      sessionAttachmentIcon.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
+    } else {
+      sessionAttachmentIcon.classList.remove('image');
+      sessionAttachmentIcon.innerHTML = `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`;
+    }
+  }
+
+  // Show preview
+  sessionAttachmentPreview?.classList.add('show');
+
+  // Show send button
+  sessionSendBtn?.classList.add('show');
+
+  // Focus text input
+  sessionInput?.focus();
+
+  sessionFileInput.value = '';
+});
+
+sessionRemoveAttachmentBtn?.addEventListener('click', () => {
+  sessionPendingAttachment = null;
+  sessionAttachmentPreview?.classList.remove('show');
+  if (!sessionInput?.value.trim()) {
+    sessionSendBtn?.classList.remove('show');
+  }
 });
 
 // ============================================================================
@@ -3644,45 +3822,36 @@ async function sendArticulation(text) {
 // NOTE: Articulations mode reset is now handled directly in showIntroPage()
 // (removed monkey-patch pattern for cleaner code and to prevent state issues)
 
-// Today's Reports button - enters daily reports mode session
+// Today's Reports button - opens daily reports session page and loads today's reports
 document.getElementById('todays-reports-btn')?.addEventListener('click', async () => {
-  // Enter daily reports mode session
-  await enterMode('dailyreports');
-  
-  // Show today's reports as initial content
+  showSessionPage('dailyreports');
+
+  // After showing session page, load today's reports as initial content
   const loadingEl = document.createElement('div');
   loadingEl.className = 'msg system';
   loadingEl.textContent = 'Loading today\'s reports...';
-  messagesEl.appendChild(loadingEl);
-  
+  sessionMessagesEl.appendChild(loadingEl);
+
   try {
     const response = await fetch('/api/reports/today');
     const data = await response.json();
-    
+
     loadingEl.remove();
-    
+
     if (!data.reports?.length) {
-      // If no reports, suggest generating one
-      send('Show me today\'s reports or generate a new briefing if none exist.', 'chat');
+      // If no reports, show empty state message
+      addSessionMessage('bot', 'No reports found for today. Ask me to generate a market briefing!');
       return;
     }
-    
+
     // Show header
-    const headerEl = document.createElement('div');
-    headerEl.className = 'msg system';
-    headerEl.textContent = `📊 Today's Reports (${data.reports.length})`;
-    messagesEl.appendChild(headerEl);
-    
+    addSessionMessage('system', `📊 Today's Reports (${data.reports.length})`);
+
     // Display each report as a bot message
     data.reports.forEach(r => {
-      const el = document.createElement('div');
-      el.className = 'msg bot';
-      el.innerHTML = formatMessage(r.summary);
-      messagesEl.appendChild(el);
+      addSessionMessage('bot', r.summary);
     });
-    
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    
+
   } catch (e) {
     loadingEl.textContent = 'Failed to load reports';
     console.error('Failed to load reports:', e);
