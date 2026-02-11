@@ -1,4 +1,4 @@
-# SparkGPT ⚡
+# ClawChat ⚡
 
 Voice + Chat + Notes assistant powered by Claude & OpenAI.
 
@@ -84,7 +84,7 @@ UNIFIED_SESSION=true
 
 ## Session Unification
 
-SparkGPT shares session context with Clawdbot (WhatsApp/Telegram). Messages sent via the web portal appear in the same conversation as messages from other channels.
+ClawChat shares session context with Clawdbot (WhatsApp/Telegram). Messages sent via the web portal appear in the same conversation as messages from other channels.
 
 Set `UNIFIED_SESSION=false` to use isolated sessions.
 

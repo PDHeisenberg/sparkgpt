@@ -1,7 +1,7 @@
 /**
- * SparkGPT - Mode Session Router
+ * ClawChat - Mode Session Router
  * 
- * Manages isolated OpenClaw sessions for each Spark mode (Dev, Research, Plan).
+ * Manages isolated OpenClaw sessions for each ClawChat mode (Dev, Research, Plan).
  * Each mode gets its own session with a deterministic ID, preventing mode tasks
  * from polluting the main WhatsApp conversation.
  */
@@ -218,7 +218,7 @@ function extractProgress(entry) {
  * Route a message to an isolated mode session via OpenClaw CLI
  * 
  * @param {WebSocket} ws - WebSocket client
- * @param {string} sessionId - SparkGPT session ID (for logging)
+ * @param {string} sessionId - ClawChat session ID (for logging)
  * @param {string} mode - Mode name (dev, research, plan)
  * @param {string} text - User's message text
  * @param {Function} sendToClient - Function to send data back to the client

@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Gateway Service
+ * ClawChat - Gateway Service
  * 
  * Communication with Clawdbot Gateway for session unification
  */
@@ -142,7 +142,7 @@ export function isConnectingError(errorText) {
 /**
  * Send message to main session via gateway webhook
  */
-export async function sendToMainSession(text, source = 'Spark Portal') {
+export async function sendToMainSession(text, source = 'ClawChat Portal') {
   if (!UNIFIED_SESSION) {
     return null;
   }

@@ -1,5 +1,5 @@
 /**
- * SparkGPT - UI Utilities
+ * ClawChat - UI Utilities
  * 
  * Message rendering, toasts, status indicators
  */

@@ -1,11 +1,11 @@
 /**
- * Spark Voice Server - Three Modes
+ * ClawChat Voice Server - Three Modes
  * 
  * Voice Mode: Fast conversational (Haiku)
  * Chat Mode: Deep thinking (Opus), files, links
  * Notes Mode: Record, transcribe, summarize
  * 
- * v83 - Session Unification: Spark Portal ↔ WhatsApp share same context
+ * v83 - Session Unification: ClawChat Portal ↔ WhatsApp share same context
  * v84 - Fix scroll lock: only auto-scroll to bottom if user is near bottom
  * v85 - TRUE UNIFICATION: ALL messages route through Clawdbot main session (same as WhatsApp)
  * v86 - Fix duplicate responses: CLI responses added to hash set, sync skips them
@@ -25,6 +25,7 @@ import { TTSProvider } from './providers/tts.js';
 import { loadConfig } from './config.js';
 import { handleRealtimeSession } from './realtime.js';
 import { handleHybridRealtimeSession } from './hybrid-realtime.js';
+import { handleElevenLabsSession } from './elevenlabs-realtime.js';
 import {
   UNIFIED_SESSION,
   UNIFIED_GATEWAY_URL,
@@ -308,7 +309,7 @@ app.get('/api/messages/all', async (req, res) => {
       // First pass: check if this session has any WhatsApp messages
       const hasWhatsApp = content.includes('[WhatsApp');
       
-      // Skip sessions that are neither Spark nor WhatsApp
+      // Skip sessions that are neither ClawChat nor WhatsApp
       if (!isSparkSession && !hasWhatsApp) continue;
       
       for (const line of lines) {
@@ -411,7 +412,7 @@ app.get('/api/messages/recent', async (req, res) => {
         const cleanText = text
           .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
           .replace(/\n?\[message_id:[^\]]+\]/g, '')
-          .replace(/^\[Spark Web\]\s*/g, '')
+          .replace(/^\[ClawChat Web\]\s*/g, '')
           .trim();
         
         if (!cleanText) continue;
@@ -755,6 +756,11 @@ server.on('upgrade', (request, socket, head) => {
         handleRealtimeSession(ws);
       }
     });
+  } else if (pathname === '/elevenlabs-realtime' || pathname.endsWith('/elevenlabs-realtime')) {
+    wssRealtime.handleUpgrade(request, socket, head, (ws) => {
+      log('🎙️ ElevenLabs Conversational AI mode');
+      handleElevenLabsSession(ws, config);
+    });
   } else {
     // Route everything else to existing handler (chat/notes)
     debug('💬 Chat WebSocket connection');
@@ -849,9 +855,9 @@ async function pollForSync() {
         
         if (!text) continue;
         
-        // Skip USER messages from Spark Portal (to avoid echo of what you just typed)
-        // BUT allow assistant responses to be synced (they don't have [Spark Web] tag when from gateway)
-        if (msg.role === 'user' && (text.includes('[Spark Web]') || text.includes('[Spark Portal]'))) continue;
+        // Skip USER messages from ClawChat Portal (to avoid echo of what you just typed)
+        // BUT allow assistant responses to be synced (they don't have [ClawChat Web] tag when from gateway)
+        if (msg.role === 'user' && (text.includes('[ClawChat Web]') || text.includes('[ClawChat Portal]'))) continue;
         
         // Skip heartbeats and system messages
         if (text.includes('HEARTBEAT') || text.includes('Read HEARTBEAT.md')) continue;
@@ -860,7 +866,7 @@ async function pollForSync() {
         let cleanText = text
           .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
           .replace(/\n?\[message_id:[^\]]+\]/g, '')
-          .replace(/^\[Spark Web\]\s*/g, '')
+          .replace(/^\[ClawChat Web\]\s*/g, '')
           .trim();
         
         if (!cleanText) continue;
@@ -871,12 +877,12 @@ async function pollForSync() {
         
         // Determine source (WhatsApp or other)
         const isWhatsApp = text.includes('[WhatsApp') || text.includes('[message_id:');
-        const isSparkWeb = text.includes('[Spark Web]');
-        const source = isWhatsApp ? 'whatsapp' : (isSparkWeb ? 'web' : 'other');
+        const isClawChatWeb = text.includes('[ClawChat Web]');
+        const source = isWhatsApp ? 'whatsapp' : (isClawChatWeb ? 'web' : 'other');
         
         // Skip portal-originated messages (user already sees them locally)
         // Assistant responses to portal are handled by hash check above (recentlySentHashes)
-        if (isSparkWeb) {
+        if (isClawChatWeb) {
           lastSyncTimestamp = msgTimestamp;
           if (msgId) lastSyncedMessageId = msgId;
           continue;
@@ -1262,12 +1268,89 @@ async function handleMessage(ws, msg) {
   }
 }
 
-// Extract text from PDF
+// Extract text/markdown from a document or image using PaddleOCR API
+// fileType: 'pdf' or 'image'
+async function extractWithPaddleOCR(dataUrl, fileType) {
+  // Read API URL: env var → secrets file → null
+  let apiUrl = process.env.PADDLEOCR_API_URL;
+  if (!apiUrl) {
+    try { apiUrl = readFileSync(join(process.env.HOME || '/root', '.config/clawdbot/secrets/paddleocr-api-url'), 'utf-8').trim(); } catch {}
+  }
+  // Read access token: env var → secrets file → null
+  let token = process.env.PADDLEOCR_ACCESS_TOKEN;
+  if (!token) {
+    try { token = readFileSync(join(process.env.HOME || '/root', '.config/clawdbot/secrets/paddleocr-access-token'), 'utf-8').trim(); } catch {}
+  }
+
+  if (!apiUrl || !token) {
+    return '[PaddleOCR not configured — cannot parse scanned document]';
+  }
+
+  const base64Data = dataUrl.split(',')[1] || dataUrl; // handle raw base64 too
+  const payload = {
+    file: base64Data,
+    fileType: fileType === 'pdf' ? 0 : 1,
+    useDocOrientationClassify: false,
+    useDocUnwarping: false
+  };
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `token ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(120000) // 2 min timeout for large docs
+  });
+
+  const result = await response.json();
+
+  if (result.errorCode !== 0) {
+    throw new Error(`PaddleOCR error ${result.errorCode}: ${result.errorMsg || 'unknown'}`);
+  }
+
+  // Extract markdown text from all pages
+  const pages = result.result?.layoutParsingResults || [];
+  if (pages.length === 0) return '';
+
+  return pages
+    .map(page => page.markdown?.text || '')
+    .filter(Boolean)
+    .join('\n\n---\n\n');
+}
+
+// Extract text from PDF (with PaddleOCR fallback for scanned docs)
 async function extractPdfText(dataUrl) {
   const base64Data = dataUrl.split(',')[1];
   const buffer = Buffer.from(base64Data, 'base64');
-  const data = await pdf(buffer);
-  return data.text;
+
+  // Try text extraction first (fast, no API call)
+  try {
+    const data = await pdf(buffer);
+    if (data.text && data.text.trim().length > 50) {
+      return data.text; // Digital PDF — text extracted successfully
+    }
+  } catch (e) {
+    debug(`pdf-parse failed, trying PaddleOCR: ${e.message}`);
+  }
+
+  // Fallback: scanned/image PDF — use PaddleOCR
+  debug('📄 PDF text too short or empty, falling back to PaddleOCR...');
+  try {
+    const ocrText = await extractWithPaddleOCR(dataUrl, 'pdf');
+    if (ocrText && ocrText.length > 0) return ocrText;
+  } catch (e) {
+    debug(`PaddleOCR fallback failed: ${e.message}`);
+  }
+
+  // Last resort: return whatever pdf-parse got (even if short)
+  try {
+    const data = await pdf(buffer);
+    return data.text || '[Could not extract text from PDF]';
+  } catch {
+    return '[Could not extract text from PDF]';
+  }
 }
 
 // Extract text from DOCX
@@ -1469,6 +1552,20 @@ async function handleTranscript(ws, session, text, mode, imageDataUrl, fileData)
       
       fullText = `[Image attached: ${imgPath}]\n\n${text}`;
       debug(`📷 [${sessionId}] Image saved: ${imgPath}`);
+
+      // If user wants text extraction from the image, run PaddleOCR
+      const ocrKeywords = /\b(parse|ocr|extract|read|scan|text|transcri)/i;
+      if (ocrKeywords.test(text)) {
+        try {
+          debug(`🔍 [${sessionId}] Running PaddleOCR on image (keyword detected)...`);
+          const ocrResult = await extractWithPaddleOCR(imageDataUrl, 'image');
+          if (ocrResult && ocrResult.length > 0 && !ocrResult.startsWith('[PaddleOCR not configured')) {
+            fullText += `\n\n[Extracted text from image (OCR):]\n${ocrResult}`;
+          }
+        } catch (e) {
+          debug(`PaddleOCR image extraction failed: ${e.message}`);
+        }
+      }
     } catch (e) {
       logError(`[${sessionId}] Image save error:`, e.message);
       // Continue without image
@@ -1640,10 +1737,10 @@ async function transcribeAudio(audioBase64) {
 
 // Start server
 const PORT = config.port || 3456;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   log(`
 ╔═══════════════════════════════════════════════════════╗
-║                    ⚡ SPARK VOICE ⚡                   ║
+║                   ⚡ CLAWCHAT VOICE ⚡                  ║
 ╠═══════════════════════════════════════════════════════╣
 ║  Server: http://localhost:${PORT}                      ║
 ║                                                       ║

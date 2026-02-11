@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Shared Utilities
+ * ClawChat - Shared Utilities
  * 
  * Common functions used across realtime.js, hybrid-realtime.js, and tools.js.
  * Eliminates duplication of key loading, session access, and context loading.
@@ -82,7 +82,7 @@ export function loadConversationContext({ limit = 10, format = 'messages', maxLe
             // Clean markers
             text = text
               .replace(/^\[WhatsApp[^\]]*\]\s*/g, '')
-              .replace(/^\[Spark[^\]]*\]\s*/g, '')
+              .replace(/^\[ClawChat[^\]]*\]\s*/g, '')
               .replace(/\n?\[message_id:[^\]]+\]/g, '')
               .trim();
 
@@ -113,9 +113,9 @@ export function loadConversationContext({ limit = 10, format = 'messages', maxLe
  * 
  * @param {string} role - 'user' or 'assistant'
  * @param {string} content - The message text
- * @param {string} source - Source tag, e.g. 'Spark Voice', 'Spark Voice Realtime' (default: 'Spark Voice')
+ * @param {string} source - Source tag, e.g. 'ClawChat Voice', 'ClawChat Voice Realtime' (default: 'ClawChat Voice')
  */
-export function appendToSession(role, content, source = 'Spark Voice') {
+export function appendToSession(role, content, source = 'ClawChat Voice') {
   try {
     const sessionPath = getSessionPath();
     const entry = {

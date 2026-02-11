@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Voice + Chat + Notes
+ * ClawChat - Voice + Chat + Notes
  * 
  * Modular architecture - see /modules/ for components
  */
@@ -18,6 +18,15 @@ import {
   float32ToBase64PCM16,
   base64PCM16ToFloat32
 } from './modules/audio.js';
+import {
+  startElevenLabsVoice,
+  stopElevenLabsVoice,
+  setCallbacks as setElevenLabsCallbacks,
+  isConnected as isElevenLabsConnected
+} from './modules/elevenlabs.js';
+
+// Voice mode: 'elevenlabs' or 'openai'
+let voiceMode = localStorage.getItem('voiceMode') || 'elevenlabs';
 
 // Elements
 const messagesEl = document.getElementById('messages');
@@ -35,7 +44,7 @@ const bottomEl = document.getElementById('bottom');
 const sparkStatusEl = document.getElementById('spark-status');
 const sessionStatusIndicator = document.getElementById('session-status-indicator');
 
-// Update Spark gateway connection status pill (and session page status)
+// Update ClawChat gateway connection status pill (and session page status)
 function updateSparkStatus(state) {
   // Update main status pill
   if (sparkStatusEl) {
@@ -602,7 +611,7 @@ function addMsg(text, type, options = {}) {
     } else {
       // Bot/sync message while on intro - just show toast, don't add to DOM
       if (type === 'bot') {
-        toast('New message from Spark');
+        toast('New message received');
       }
       return null; // Don't add message to DOM
     }
@@ -1186,8 +1195,8 @@ function handleRealtimeMessage(msg) {
       break;
     
     case 'processing':
-      // Hybrid mode: processing with Spark Opus
-      const engineName = msg.engine || 'Spark Opus';
+      // Hybrid mode: processing with Claude Opus
+      const engineName = msg.engine || 'Claude Opus';
       const statusMsg = msg.message || `Checking with ${engineName}...`;
       console.log(`🧠 ${statusMsg}`);
       updateVoiceStatus(statusMsg);
@@ -1312,7 +1321,35 @@ function startVoice() {
   // Update status indicator
   updateVoiceStatus('Connecting...');
   setStatus('Connecting...');
-  connectRealtime();
+  
+  if (voiceMode === 'elevenlabs') {
+    // ElevenLabs Conversational AI mode
+    setElevenLabsCallbacks({
+      onStatus: (text) => { updateVoiceStatus(text); setStatus(text); },
+      onMessage: (role, text, isFinal) => {
+        if (role === 'user') {
+          if (!currentUserMsg) {
+            currentUserMsg = addVoiceMessage('user', text);
+          } else {
+            currentUserMsg.textContent = text;
+          }
+          if (isFinal) currentUserMsg = null;
+        } else {
+          if (!currentAssistantMsg) {
+            currentAssistantMsg = addVoiceMessage('assistant', text);
+          } else {
+            currentAssistantMsg.textContent = text;
+          }
+          if (isFinal) currentAssistantMsg = null;
+        }
+      },
+      onStop: () => stopVoice()
+    });
+    startElevenLabsVoice();
+  } else {
+    // OpenAI Realtime mode (legacy)
+    connectRealtime();
+  }
 }
 
 function stopVoice() {
@@ -1325,17 +1362,21 @@ function stopVoice() {
   currentUserMsg = null;
   currentAssistantMsg = null;
   
-  // Stop audio capture
-  stopAudioCapture();
-  
-  // Stop playback
-  stopAudioPlayback();
-  
-  // Close realtime WebSocket
-  if (realtimeWs) {
-    realtimeWs.send(JSON.stringify({ type: 'stop' }));
-    realtimeWs.close();
-    realtimeWs = null;
+  if (voiceMode === 'elevenlabs') {
+    stopElevenLabsVoice();
+  } else {
+    // Stop audio capture
+    stopAudioCapture();
+    
+    // Stop playback
+    stopAudioPlayback();
+    
+    // Close realtime WebSocket
+    if (realtimeWs) {
+      realtimeWs.send(JSON.stringify({ type: 'stop' }));
+      realtimeWs.close();
+      realtimeWs = null;
+    }
   }
   
   mode = 'chat';
@@ -1385,7 +1426,7 @@ textInput?.addEventListener('blur', () => {
   }, 100);
 });
 
-sendBtn?.addEventListener('click', submitText);
+sendBtn?.addEventListener('click', () => submitText());
 
 async function submitText() {
   const text = textInput?.value.trim();
@@ -1798,7 +1839,7 @@ function handle(data) {
         } else if (pageState === 'intro') {
           // Show toast notification on intro page for new messages
           if (data.message.role === 'bot') {
-            toast('New message from Spark');
+            toast('New message received');
           }
         }
       }
@@ -2360,13 +2401,13 @@ function saveSessionState() {
       };
     }
   }
-  localStorage.setItem('sparkgpt-active-sessions', JSON.stringify(state));
+  localStorage.setItem('clawchat-active-sessions', JSON.stringify(state));
 }
 
 // Restore session state on page load
 function restoreSessionState() {
   try {
-    const stored = JSON.parse(localStorage.getItem('sparkgpt-active-sessions') || '{}');
+    const stored = JSON.parse(localStorage.getItem('clawchat-active-sessions') || '{}');
     // Remove stale entries (older than 24 hours)
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     for (const [mode, data] of Object.entries(stored)) {
@@ -2374,7 +2415,7 @@ function restoreSessionState() {
         delete stored[mode];
       }
     }
-    localStorage.setItem('sparkgpt-active-sessions', JSON.stringify(stored));
+    localStorage.setItem('clawchat-active-sessions', JSON.stringify(stored));
     return stored;
   } catch {
     return {};
@@ -2627,6 +2668,7 @@ async function sendSessionMessage() {
 
   let messageText = text;
   let imageData = null;
+  let fileAttachment = null;
 
   // Handle attachment
   if (sessionPendingAttachment) {
@@ -2642,14 +2684,15 @@ async function sendSessionMessage() {
         });
         messageText = text || 'What is this image?';
       } else {
-        const content = await new Promise((res, rej) => {
+        // Read as data URL for binary-safe transfer to backend
+        const dataUrl = await new Promise((res, rej) => {
           const r = new FileReader();
           r.onload = () => res(r.result);
           r.onerror = rej;
-          r.readAsText(file);
+          r.readAsDataURL(file);
         });
-        const preview = content.slice(0, 2000) + (content.length > 2000 ? '...' : '');
-        messageText = text ? `${text}\n\n[File: ${file.name}]\n${preview}` : `[File: ${file.name}]\n${preview}`;
+        fileAttachment = { filename: file.name, dataUrl };
+        messageText = text || `Parse this file: ${file.name}`;
       }
     } catch {
       toast('Failed to read file', true);
@@ -2670,8 +2713,9 @@ async function sendSessionMessage() {
 
   sessionPageProcessing = true;
 
-  // Add user message (with image indicator if applicable)
-  addSessionMessage('user', imageData ? messageText + ' 📷' : messageText);
+  // Add user message (with file/image indicator if applicable)
+  const displayText = fileAttachment ? messageText + ` 📄 ${fileAttachment.filename}` : (imageData ? messageText + ' 📷' : messageText);
+  addSessionMessage('user', displayText);
 
   // Show thinking
   showSessionThinking();
@@ -2685,6 +2729,7 @@ async function sendSessionMessage() {
       text: messageText
     };
     if (imageData) payload.image = imageData;
+    if (fileAttachment) payload.file = fileAttachment;
     ws.send(JSON.stringify(payload));
   } else {
     removeSessionThinking();
@@ -3930,6 +3975,7 @@ submitText = async function() {
   
   let messageText = text;
   let imageData = null;
+  let fileAttachment = null;
   
   // Handle attachment
   if (pendingAttachment) {
@@ -3945,14 +3991,15 @@ submitText = async function() {
         });
         messageText = text || 'What is this image?';
       } else {
-        const content = await new Promise((res, rej) => {
+        // Read as data URL for binary-safe transfer to backend
+        const dataUrl = await new Promise((res, rej) => {
           const r = new FileReader();
           r.onload = () => res(r.result);
           r.onerror = rej;
-          r.readAsText(file);
+          r.readAsDataURL(file);
         });
-        const preview = content.slice(0, 2000) + (content.length > 2000 ? '...' : '');
-        messageText = text ? `${text}\n\n[File: ${file.name}]\n${preview}` : `[File: ${file.name}]\n${preview}`;
+        fileAttachment = { filename: file.name, dataUrl };
+        messageText = text || `Parse this file: ${file.name}`;
       }
     } catch {
       toast('Failed to read file', true);
@@ -3971,9 +4018,11 @@ submitText = async function() {
   sendBtn?.classList.remove('show');
   voiceBtn?.classList.remove('hidden');
   
-  // Send with image if present
+  // Send with image, file, or plain text
   if (imageData) {
     sendWithImage(messageText, imageData);
+  } else if (fileAttachment) {
+    sendWithFile(messageText, fileAttachment);
   } else {
     send(messageText, 'chat');
   }
@@ -3992,4 +4041,19 @@ function sendWithImage(text, imageData) {
   showThinking();
   
   ws.send(JSON.stringify({ type: 'transcript', text, image: imageData, mode: 'chat' }));
+}
+
+// Send message with file attachment (PDF, DOCX, etc.)
+function sendWithFile(text, fileAttachment) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    toast('Not connected', true);
+    return;
+  }
+  isProcessing = true;
+  
+  // Show user message with file indicator
+  const userMsg = addMsg(text + ` 📄 ${fileAttachment.filename}`, 'user', { userInitiated: true });
+  showThinking();
+  
+  ws.send(JSON.stringify({ type: 'transcript', text, file: fileAttachment, mode: 'chat' }));
 }

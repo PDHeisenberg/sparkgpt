@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Session Service
+ * ClawChat - Session Service
  * 
  * Utilities for managing Clawdbot session files
  */
@@ -25,7 +25,7 @@ export function loadGatewayToken() {
 }
 
 // Mode session IDs that should NOT be treated as the main session
-// These are deterministic IDs used by SparkGPT mode routing
+// These are deterministic IDs used by ClawChat mode routing
 const MODE_SESSION_IDS = new Set([
   'spark-dev-00000-0000-0000-000000000001',
   'spark-res-00000-0000-0000-000000000002',
@@ -134,7 +134,7 @@ export function appendToSessionSync(role, content) {
       timestamp: new Date().toISOString(),
       message: {
         role,
-        content: [{ type: 'text', text: `[Spark Portal] ${content}` }],
+        content: [{ type: 'text', text: `[ClawChat Portal] ${content}` }],
         timestamp: Date.now()
       }
     };

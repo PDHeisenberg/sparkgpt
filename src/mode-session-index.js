@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Mode Session Index
+ * ClawChat - Mode Session Index
  * 
  * Manages multiple sessions per mode with a JSON index file.
  * Each mode gets its own index at mode-sessions/<mode>.json

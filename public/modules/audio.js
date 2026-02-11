@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Audio Utilities
+ * ClawChat - Audio Utilities
  * 
  * Audio format conversion and URL helpers
  */

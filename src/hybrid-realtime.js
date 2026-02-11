@@ -188,7 +188,7 @@ export function handleHybridRealtimeSession(clientWs) {
             clientWs.send(JSON.stringify({ type: 'transcript', text: currentTranscript }));
             
             // Append user message to session
-            appendToSession('user', currentTranscript, 'Spark Voice Realtime');
+            appendToSession('user', currentTranscript, 'ClawChat Voice Realtime');
             
             // Notify client we're processing with Claude
             clientWs.send(JSON.stringify({ type: 'processing', engine: 'claude' }));
@@ -200,7 +200,7 @@ export function handleHybridRealtimeSession(clientWs) {
               console.log(`🤖 Claude response: "${response.slice(0, 50)}..."`);
               
               // Append assistant response to session
-              appendToSession('assistant', response, 'Spark Voice Realtime');
+              appendToSession('assistant', response, 'ClawChat Voice Realtime');
               
               // Send text response
               clientWs.send(JSON.stringify({ type: 'text', content: response }));

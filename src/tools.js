@@ -1,5 +1,5 @@
 /**
- * Tools for Spark Voice Realtime
+ * Tools for ClawChat Voice Realtime
  * 
  * Provides calendar, time, and Clawdbot integration
  */

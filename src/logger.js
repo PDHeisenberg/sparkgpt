@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Lightweight Logger
+ * ClawChat - Lightweight Logger
  * 
  * Respects DEBUG environment variable for verbose logging.
  * Essential logs (startup, errors, warnings) always show.

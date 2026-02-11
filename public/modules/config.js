@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Configuration
+ * ClawChat - Configuration
  */
 
 export const CONFIG = {

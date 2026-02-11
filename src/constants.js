@@ -1,5 +1,5 @@
 /**
- * SparkGPT - Shared Constants
+ * ClawChat - Shared Constants
  * 
  * Central location for magic numbers and configuration values
  * used across multiple modules.

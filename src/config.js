@@ -73,6 +73,10 @@ export function loadConfig() {
       model: process.env.AVATAR_MODEL || null,
     },
     
+    elevenlabs: {
+      agentId: process.env.ELEVENLABS_AGENT_ID || null,
+    },
+
     features: {
       interruptible: true,
       streamAudio: true,

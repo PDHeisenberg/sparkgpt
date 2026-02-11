@@ -4,7 +4,7 @@
 #   systemctl --user start sparkgpt
 
 [Unit]
-Description=Spark Voice Server
+Description=ClawChat Voice Server
 After=network.target
 
 [Service]

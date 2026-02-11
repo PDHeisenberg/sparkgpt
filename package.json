@@ -1,7 +1,7 @@
 {
-  "name": "sparkgpt",
+  "name": "clawchat",
   "version": "1.0.0",
-  "description": "Voice + Chat + Notes assistant powered by Claude & OpenAI",
+  "description": "ClawChat - Voice + Chat + Notes assistant powered by Claude & OpenAI",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
